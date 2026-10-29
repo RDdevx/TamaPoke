@@ -1,0 +1,42 @@
+#!/bin/bash
+# Builds the TamaPoke desktop emulator from the real firmware sources.
+#
+#   bash tools/emu/build.sh && tools/emu/tamapoke-emu
+#
+# Needs SDL2 (brew install sdl2 / apt install libsdl2-dev). Nothing else: the
+# hardware is stubbed, so the Arduino toolchain is not required.
+set -e
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
+cd "$HERE"
+
+if ! command -v sdl2-config >/dev/null 2>&1; then
+  echo "SDL2 not found. macOS: brew install sdl2   Debian: apt install libsdl2-dev   Windows/MSYS2: pacman -S mingw-w64-ucrt-x86_64-SDL2" >&2
+  exit 1
+fi
+
+# Windows (MSYS2/MinGW): sockets live in ws2_32, not libc. The C++ runtime is
+# linked statically so the exe only ever needs SDL2.dll beside it.
+EXTRA_LIBS=""
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) EXTRA_LIBS="-lws2_32 -static-libgcc -static-libstdc++" ;;
+esac
+
+# The Arduino build generates function prototypes for the .ino automatically;
+# a plain g++ build does not, and the sketch calls plenty of functions before
+# defining them. Regenerated every build so it can never go stale.
+python3 genproto.py "$ROOT/TamaPoke.ino"
+
+# .ino is C++ but g++ will not compile that extension
+{ echo '#include "proto.h"'; cat "$ROOT/TamaPoke.ino"; } > sketch.cpp
+
+g++ -std=c++17 -O1 -w \
+  -I. -I"$ROOT" \
+  -DSPRITE_DIR="\"$ROOT/tools/sdcard/mons\"" \
+  $(sdl2-config --cflags) \
+  -o tamapoke-emu \
+  sketch.cpp wavout.cpp "$ROOT/gbsynth.cpp" "$ROOT/pet.cpp" "$ROOT/i18n.cpp" "$ROOT/party.cpp" "$ROOT/battle.cpp" "$ROOT/link.cpp" "$ROOT/save.cpp" \
+  host_impl.cpp font.cpp clock.cpp main_sdl.cpp \
+  $(sdl2-config --libs) $EXTRA_LIBS
+
+echo "built: $HERE/tamapoke-emu"

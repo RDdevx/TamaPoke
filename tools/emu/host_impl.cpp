@@ -1,0 +1,187 @@
+// Host versions of the three hardware modules. The sprite loader is the real
+// TPK2/TPTH parser, just reading from a directory instead of the SD card.
+#include "Arduino.h"
+#include "sdmon.h"
+#include "rtcbat.h"
+#include "audio.h"
+#include "linknow.h"
+#include <cstdio>
+#include <string>
+
+// Baked in by build.sh from the repo location; --sprites <dir> overrides it.
+#ifndef SPRITE_DIR
+#define SPRITE_DIR "../sdcard/mons"
+#endif
+static std::string g_spriteDir = SPRITE_DIR;
+void emuSetSpriteDir(const char *d) { g_spriteDir = d; }
+
+bool sdReady = true;
+bool sdDirty = false;
+// The firmware rescans region art when a pack lands over PUT. There is no card
+// here and no PUT path, so the flag never sets -- but both symbols are
+// referenced from loop(), so they have to exist to link.
+bool sdArtDirty = false;
+// Emulates the firmware's boot-time SD probe against the sprite dir, so the
+// emulator's region gating matches a board: a gen1-3 folder must not offer an
+// Alola wild hunt with an invisible foe. Same three probes per region as
+// sdmon.cpp -- start, middle and end -- so a half-copied folder fails too.
+// An empty folder keeps every region enabled, exactly like a board with no SD.
+void sdScanRegionArt(bool verbose) {
+  uint16_t mask = 0;
+  for (uint8_t r = 0; r < REGION_COUNT; r++) {
+    if (r == REGION_ALL) continue;
+    bool all = true;
+    for (int i = 0; i < 3 && all; i++) {
+      char file[16];
+      int probe = sdRegionProbe(r, i);
+      snprintf(file, sizeof(file), "/p%03d.bin", probe);
+      FILE *f = fopen((g_spriteDir + file).c_str(), "rb");
+      if (!f) all = false; else fclose(f);
+    }
+    if (all) mask |= (uint16_t)(1u << r);
+    if (verbose)
+      Serial.printf("art: %s %s\n", REGIONS[r].name, all ? "yes" : "NO (missing pack)");
+  }
+  if (mask) gRegionArt = mask;
+}
+SdThumbs thumbs;
+
+static uint8_t *slurp(const std::string &path, uint32_t *size) {
+  FILE *f = fopen(path.c_str(), "rb");
+  if (!f) return nullptr;
+  fseek(f, 0, SEEK_END);
+  long n = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  if (n <= 0) { fclose(f); return nullptr; }
+  uint8_t *b = (uint8_t *)malloc(n);
+  if (!b || fread(b, 1, n, f) != (size_t)n) { free(b); fclose(f); return nullptr; }
+  fclose(f);
+  *size = (uint32_t)n;
+  return b;
+}
+
+bool PmdMon::load(int16_t dexNum, bool shiny) {
+  if (dexNum < 1 || dexNum > 999) return false;
+  unload();
+  // std::string, not a fixed char[64]: a sprite dir deeper than ~54 characters
+  // used to truncate the path, fail the fopen, and silently fall back to the
+  // built-in art -- which is exactly "the artwork is bad and it never walks".
+  char file[16];
+  snprintf(file, sizeof(file), "/p%s%03u.bin", shiny ? "s" : "", (unsigned)dexNum);
+  uint32_t size = 0;
+  blob = slurp(g_spriteDir + file, &size);
+  if (!blob && shiny) {
+    snprintf(file, sizeof(file), "/p%03u.bin", (unsigned)dexNum);
+    blob = slurp(g_spriteDir + file, &size);
+  }
+  if (!blob) return false;
+  if (size < 7 || memcmp(blob, "TPK2", 4) != 0) { unload(); return false; }
+
+  uint8_t nActs = blob[4];
+  memcpy(&palCount, blob + 5, 2);
+  if (palCount > 256 || (uint32_t)7 + palCount * 2 > size) { unload(); return false; }
+  memcpy(pal, blob + 7, palCount * 2);
+
+  const uint8_t *q = blob + 7 + palCount * 2, *end = blob + size;
+  for (uint8_t i = 0; i < nActs && q + 4 <= end; i++) {
+    uint8_t id = q[0], w = q[1], h = q[2], nf = q[3];
+    q += 4;
+    if (id >= PMD_NACTS || nf > 24) { unload(); return false; }
+    uint32_t bytes = (uint32_t)nf * 2 + (uint32_t)w * h * nf;
+    if (w == 0 || h == 0 || nf == 0 || q + bytes > end) { unload(); return false; }
+    PmdAct &a = acts[id];
+    a.w = w; a.h = h; a.frames = nf;
+    for (uint8_t k = 0; k < nf; k++) { a.ms[k] = q[0] | (q[1] << 8); q += 2; }
+    a.data = q;
+    q += (uint32_t)w * h * nf;
+    uint8_t base = 1;
+    for (uint8_t f = 0; f < nf; f++) {
+      const uint8_t *fr = a.data + (uint32_t)f * w * h;
+      for (int r = h - 1; r >= 0; r--) {
+        bool any = false;
+        for (int c = 0; c < w && !any; c++) if (fr[r * w + c] != 0xFF) any = true;
+        if (any) { if (r + 1 > base) base = r + 1; break; }
+      }
+    }
+    a.base = base;
+  }
+  dex = dexNum;
+  loaded = true;
+  return true;
+}
+
+void PmdMon::unload() {
+  if (blob) { free(blob); blob = nullptr; }
+  for (auto &a : acts) { a.w = a.h = a.frames = a.base = 0; a.data = nullptr; }
+  loaded = false;
+}
+
+bool SdThumbs::load() {
+  uint32_t size = 0;
+  data = slurp(g_spriteDir + "/thumbs.bin", &size);
+  if (!data) { Serial.println("emu: no thumbs.bin"); return false; }
+  if (memcmp(data, "TPTH", 4) != 0) { free(data); data = nullptr; return false; }
+  memcpy(&count, data + 4, 2);
+  loaded = true;
+  Serial.printf("emu: thumbnails loaded: %u\n", count);
+  return true;
+}
+
+const uint8_t *SdThumbs::get(int16_t dex) const {
+  if (!loaded || dex < 1 || dex > count) return nullptr;
+  uint32_t off;
+  memcpy(&off, data + 6 + 4 * (dex - 1), 4);
+  return data + off;
+}
+
+bool SdMon::load(int16_t, bool) { return false; }   // legacy TPK1 path unused
+void SdMon::unload() { if (data) { free(data); data = nullptr; } loaded = false; }
+bool sdBegin() {
+  Serial.printf("emu: sprites from %s\n", g_spriteDir.c_str());
+  // Hardware does this from its own sdBegin: narrow the regions to what is
+  // actually in the folder, so wild hunts never draw from a region with no
+  // sprites here. A missing folder behaves like a board with no SD.
+  sdScanRegionArt(false);
+  return true;
+}
+bool sdSerialCommand(const String &) { return false; }
+
+// --- RTC / battery / PMU ---
+static uint32_t g_epoch = 0;
+bool rtcBegin() { return true; }
+uint32_t rtcEpoch() { return g_epoch + millis() / 1000; }
+void rtcSetEpoch(uint32_t e) { g_epoch = e - millis() / 1000; }
+bool batBegin() { return true; }
+void pmuEnablePanel() {}
+int batPercent() { return 87; }
+bool batCharging() { return false; }
+bool usbPresent() { return true; }
+void pwrSetup() {}
+bool pwrShortPressed() { return false; }
+
+// --- audio (silent) ---
+void audioBegin() {}
+void sfxPlay(uint8_t) {}
+// no radio here; the protocol itself is exercised by tests/link_test.cpp
+struct Link;
+// No radio here at all, which is why lossy_test drives Link directly instead
+// of going through this.
+bool linkNowBegin(Link *) { return false; }
+void linkNowEnd() {}
+bool linkNowUp() { return false; }
+void linkNowPoll() {}
+static LinkNowStats gNoStats;
+const LinkNowStats &linkNowStats() { return gNoStats; }
+// audio is silent here, but the sketch calls these, so they have to exist
+static uint8_t g_emuVol = 7, g_emuMusic = 0;
+void audioMusic(uint8_t id) { g_emuMusic = id; }
+void audioSetVolume(uint8_t v) { g_emuVol = v > 10 ? 10 : v; }
+uint8_t audioVolume() { return g_emuVol; }
+void audioSetEnabled(bool on) { (void)on; }
+bool audioEnabled() { return true; }
+
+// Why the last run ended. The tests link this file but not main_sdl.cpp, so the
+// state lives here and the GUI sets it after reading a simulated crash.
+static int g_resetReason = ESP_RST_POWERON;
+esp_reset_reason_t emuResetReason() { return g_resetReason; }
+void emuSetResetReason(int r) { g_resetReason = r; }

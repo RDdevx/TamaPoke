@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TamaPoke · Installer</title>
+<style>
+  :root {
+    --bg:#f2efe1; --ink:#2a2a36; --accent:#4f93c4; --ok:#58b868;
+    --bad:#e8503a; --track:#d8d2bd; --card:#ffffff;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; font-family:system-ui,-apple-system,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.6;
+  }
+  .wrap { max-width:680px; margin:0 auto; padding:2rem 1.25rem 4rem; }
+  h1 { font-size:2rem; margin:0 0 .25rem; }
+  h2 { font-size:1.25rem; margin:2.5rem 0 .5rem; }
+  .sub { color:#6b6b76; margin:0 0 1.5rem; }
+  .note { font-size:.9rem; color:#6b6b76; }
+  .step {
+    background:var(--card); border:1px solid var(--track);
+    border-radius:14px; padding:1.25rem 1.5rem; margin:1rem 0;
+  }
+  .num {
+    display:inline-flex; width:26px; height:26px; border-radius:50%;
+    background:var(--accent); color:#fff; align-items:center;
+    justify-content:center; font-weight:600; margin-right:.5rem; font-size:.9rem;
+  }
+  .option {
+    display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;
+    margin:.75rem 0 .25rem;
+  }
+  .option .label {
+    font-weight:700; font-size:1.05rem; letter-spacing:.02em;
+  }
+  button {
+    font:inherit; font-weight:600; padding:.65rem 1.2rem;
+    border-radius:10px; border:1px solid var(--ink);
+    background:#fff; cursor:pointer;
+  }
+  button:hover { background:var(--bg); }
+  button:disabled { opacity:.5; cursor:default; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.primary:hover { background:#3f7fb0; }
+  button.danger { border-color:var(--bad); color:var(--bad); }
+  esp-web-install-button { display:inline-block; }
+  esp-web-install-button[install-unsupported] { display:none; }
+  .unsupported { display:none; color:var(--bad); font-weight:600; }
+  .bar {
+    height:10px; background:var(--track); border-radius:5px;
+    overflow:hidden; margin-top:.75rem; display:none;
+  }
+  .bar>div { height:100%; width:0; background:var(--ok); transition:width .15s; }
+  #log {
+    font-family:ui-monospace,monospace; font-size:.85rem;
+    background:#1b1b25; color:#d8dcf0; border-radius:10px;
+    padding:.75rem 1rem; margin-top:1rem; max-height:240px;
+    overflow:auto; white-space:pre-wrap; display:none;
+  }
+  a { color:var(--accent); }
+  code { background:#0001; padding:.1em .4em; border-radius:5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>TamaPoke</h1>
+  <p class="ver" style="margin:.35rem 0 1.25rem">
+    <span style="display:inline-block;padding:.35rem .75rem;background:#fff;border:1px solid var(--track);border-radius:999px;font-size:.95rem">
+      Firmware: <b>3.13</b> · Gen 1–9 (Kanto through Paldea)
+    </span>
+  </p>
+  <p class="sub">Two options: load the game, then load the sprites. Chrome or Edge on a computer, served over HTTPS or localhost.</p>
+
+  <p class="unsupported" id="unsupported">This browser does not support Web Serial. Use desktop Chrome or Edge.</p>
+
+  <h2><span class="num">1</span>Load Tamapoke</h2>
+  <div class="step">
+    <p>Connect the board by USB and press install. This flashes the firmware —
+       the game itself.</p>
+    <div class="option">
+      <span class="label">Load Tamapoke</span>
+      <esp-web-install-button manifest="manifest.json">
+        <button slot="activate">Install TamaPoke</button>
+        <span slot="unsupported">Browser not supported (use Chrome/Edge).</span>
+        <span slot="not-allowed">Needs HTTPS or localhost.</span>
+      </esp-web-install-button>
+    </div>
+    <p class="note"><b>Updating?</b> Leave <b>Erase device</b> unchecked to keep
+      your Pokémon and progress. A brand-new board may not show a serial port
+      until you hold <b>BOOT</b>, tap <b>RESET</b>, release <b>BOOT</b>.</p>
+  </div>
+
+  <h2><span class="num">2</span>Load Sprites</h2>
+  <div class="step">
+    <p>Insert a microSD card and close the step-1 dialog first. Then press
+      <b>Load Sprites</b>: it connects the board and sends every sprite in the
+      Mon folder of every available region pack to the <b>Mon folder on the SD
+      card</b> (<code>/mons</code>).</p>
+    <div class="option">
+      <span class="label">Load Sprites</span>
+      <button id="load" class="primary">Load all sprites</button>
+      <button id="stop" class="danger" disabled>Stop</button>
+    </div>
+    <p class="note">This is the slow part: the sprites travel over the USB
+      serial link (Kanto alone is ~40&nbsp;MB). Leave the tab open and the card
+      in. Re-running it later is safe — files are simply written again.</p>
+    <p class="note">Already have the sprites on this computer, in a Mon folder?
+      <label style="cursor:pointer;text-decoration:underline">send that whole
+      folder<input id="dir" type="file" webkitdirectory hidden></label>
+      — every <code>.bin</code> file inside goes to <code>/mons</code> on the
+      card. A few loose files also work:
+      <label style="cursor:pointer;text-decoration:underline">pick files
+      individually<input id="files" type="file" accept=".bin" multiple hidden></label></p>
+    <div class="bar" id="bar"><div></div></div>
+    <pre id="log"></pre>
+  </div>
+
+  <p class="note">Sprites: <a href="https://github.com/PMDCollab/SpriteCollab">PMD SpriteCollab</a>
+    (CC BY-NC). Pokémon © Nintendo / Game Freak. Unofficial non-commercial fan project.</p>
+</div>
+
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"></script>
+<script>
+// ---------------------------------------------------------------------
+// Option 2 — Load Sprites: every sprite in the Mon folder of every region
+// pack, sent to the Mon folder (/mons) on the board's SD card.
+//
+// The board speaks a tiny file protocol over USB serial (same one the
+// original installers used):
+//   PUT <path> <bytes>\n  + raw data  ->  "OK" ... "#" per 2 KB chunk ... "DONE"
+// The path carries the mons/ prefix, so files land in /mons on the SD.
+// ---------------------------------------------------------------------
+const log = (m) => {
+  const el = document.getElementById('log');
+  el.style.display = 'block';
+  el.textContent += m + '\n';
+  el.scrollTop = el.scrollHeight;
+};
+
+const REGION_PAKS = ['kanto', 'johto', 'hoenn', 'sinnoh', 'unova', 'kalos', 'alola', 'galar', 'paldea'];
+// Same-origin first (the paks sitting next to this page), then the public
+// release that hosts identical bundles, so the page works from any host.
+const PAK_FALLBACK = 'https://github.com/DylanPDao/TamaPoke/releases/latest/download';
+
+let port, reader, writer;
+let busy = false;          // one transfer at a time, auto or manual
+let aborted = false;       // set by Stop; every loop checks it
+let midFile = false;       // a PUT was accepted but not confirmed DONE: the
+                           // board is still reading raw bytes for it
+let activeAbort = null;    // the running flow's AbortController (for Stop)
+
+// --- Serial reading ---------------------------------------------------
+// A background pump keeps reading the port and splits complete lines into a
+// queue. Waiting for a line is then just a queue pop with a timeout — a read
+// can never hang past its deadline, because nothing awaits reader.read()
+// except the pump itself.
+let lineQueue = [], lineWaiters = [], lineBuf = '', readerDone = false;
+
+async function readPump() {
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      lineBuf += new TextDecoder().decode(value);
+      let nl;
+      while ((nl = lineBuf.indexOf('\n')) >= 0) {
+        const l = lineBuf.slice(0, nl).trim();
+        lineBuf = lineBuf.slice(nl + 1);
+        lineQueue.push(l);
+      }
+      // wake one waiter per line now available
+      while (lineQueue.length && lineWaiters.length) lineWaiters.shift()();
+    }
+  } catch (e) { /* port closed or errored: fall through */ }
+  readerDone = true;
+  lineWaiters.forEach((w) => w());   // let them see readerDone
+  lineWaiters = [];
+}
+
+// Next complete line, or null after timeoutMs (or if the port closed).
+function nextLine(timeoutMs = 6000) {
+  return new Promise((resolve) => {
+    const settle = (val) => resolve(val);
+    const onWake = () => {
+      const l = lineQueue.shift();
+      if (l !== undefined) { clearTimeout(timer); settle(l); }
+      else if (readerDone) { clearTimeout(timer); settle(null); }
+      else lineWaiters.push(onWake);          // spurious wake: wait again
+    };
+    const timer = setTimeout(() => {
+      const i = lineWaiters.indexOf(onWake);
+      if (i >= 0) lineWaiters.splice(i, 1);
+      settle(null);
+    }, timeoutMs);
+    if (lineQueue.length) { clearTimeout(timer); settle(lineQueue.shift()); }
+    else lineWaiters.push(onWake);
+  });
+}
+
+async function waitFor(token, timeoutMs = 6000) {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    const l = await nextLine(Math.max(200, deadline - Date.now()));
+    if (l === null) return false;
+    if (l === token) return true;
+    if (l === 'ERR') return false;
+    if (Date.now() >= deadline) return false;
+  }
+}
+
+const enc = new TextEncoder();
+
+async function sendOne(name, data) {
+  if (aborted) return false;                       // never start a file mid-cancel
+  await writer.write(enc.encode(`PUT ${name} ${data.length}\n`));
+  if (!await waitFor('OK')) return false;
+  // From here the board is in raw-read mode for this file. If we stop or
+  // fail before DONE, it stays there until its ~5 s serial read times out.
+  midFile = true;
+  for (let i = 0; i < data.length; i += 2048) {
+    if (aborted) return false;                     // never write data mid-cancel
+    await writer.write(data.slice(i, i + 2048));
+    if (!await waitFor('#')) return false;
+  }
+  const done = await waitFor('DONE', 30000);
+  if (done) midFile = false;
+  return done;
+}
+
+// A region pack is one TPAK bundle: a table of (name, size) entries followed
+// by the raw files back to back. Every entry's name already carries the
+// mons/ prefix, so what is inside the Mon folder of the pack is exactly what
+// lands in the Mon folder on the SD card.
+function parsePak(buf) {
+  const dv = new DataView(buf), td = new TextDecoder();
+  if (td.decode(new Uint8Array(buf, 0, 4)) !== 'TPAK') throw new Error('invalid bundle');
+  const count = dv.getUint16(4, true);
+  let off = 6;
+  const items = [];
+  for (let i = 0; i < count; i++) {
+    const nl = dv.getUint8(off); off += 1;
+    const name = td.decode(new Uint8Array(buf, off, nl)); off += nl;
+    const size = dv.getUint32(off, true); off += 4;
+    items.push({ name, size });
+  }
+  let pos = off;
+  for (const it of items) { it.data = new Uint8Array(buf, pos, it.size); pos += it.size; }
+  return items;
+}
+
+async function fetchPakUrls(region) {
+  return [`sprites-${region}.pak`, `${PAK_FALLBACK}/sprites-${region}.pak`];
+}
+
+async function fetchPak(region, signal) {
+  let last;
+  for (const url of await fetchPakUrls(region)) {
+    try {
+      const resp = await fetch(url, { signal });
+      if (resp.ok) return await resp.arrayBuffer();
+      last = new Error('HTTP ' + resp.status);
+    } catch (e) { last = e; }
+  }
+  throw last || new Error('not found');
+}
+
+// Probes a region's pack. Returns 'ok', 'missing' (genuinely not packed —
+// 404/410 at every known URL, safe to skip) or 'error' (the network or the
+// server failed in a way that must NOT be reported as "skipped").
+async function pakExists(region, signal) {
+  for (const url of await fetchPakUrls(region)) {
+    try {
+      const r = await fetch(url, { method: 'HEAD', signal });
+      if (r.ok) return 'ok';
+      if (r.status === 404 || r.status === 410) continue;   // try next URL
+      return 'error';
+    } catch (e) { return 'error'; }
+  }
+  return 'missing';
+}
+
+async function connect() {
+  if (writer) return true;                        // already connected
+  port = await navigator.serial.requestPort();    // needs a user gesture: this click
+  await port.open({ baudRate: 115200 });
+  reader = port.readable.getReader();
+  writer = port.writable.getWriter();
+  lineQueue = []; lineBuf = ''; readerDone = false;
+  readPump();                                     // runs until the port closes
+  return true;
+}
+
+let disconnecting = null;
+
+// One owner, one teardown: concurrent callers all await the same promise, and
+// the second call is a no-op. The pump is stopped first (cancel makes the
+// pending read() return), then BOTH locks are released before close(), or
+// close() rejects with a lock error.
+function disconnect() {
+  if (disconnecting) return disconnecting;
+  disconnecting = (async () => {
+    try { if (reader) await reader.cancel(); } catch (e) {}
+    try { if (reader) reader.releaseLock(); } catch (e) {}
+    try { if (writer) writer.releaseLock(); } catch (e) {}
+    try { if (port) await port.close(); } catch (e) {}
+    reader = writer = port = undefined;
+  })().finally(() => { disconnecting = null; });
+  return disconnecting;
+}
+
+// Sends every item. Returns true only if every single file completed.
+// On the first protocol failure it stops: continuing would leave a run that
+// reports success while half the sprites are missing.
+async function sendAll(items) {
+  const bar = document.getElementById('bar');
+  bar.style.display = 'block';
+  const fill = bar.firstElementChild;
+  const total = items.reduce((n, it) => n + it.data.length, 0);
+  let sent = 0, done = 0;
+  for (const it of items) {
+    if (aborted) return false;
+    if (!await sendOne(it.name, it.data)) {
+      if (!aborted) {
+        log('Failed on ' + it.name + ' — transfer stopped.');
+        log('Check the cable and SD card, then run it again to finish.');
+      }
+      return false;
+    }
+    done++;
+    sent += it.data.length;
+    fill.style.width = (sent / total * 100) + '%';
+  }
+  log(`Sent ${done}/${items.length} files.`);
+  return true;
+}
+
+// Everything below shares one busy/abort state so the automatic and the
+// manual paths can never write to the port at the same time.
+const loadBtn = document.getElementById('load');
+const stopBtn = document.getElementById('stop');
+
+// After an interrupted file the board's serial reader keeps consuming raw
+// bytes for ~5 s — a new PUT sent inside that window would be swallowed as
+// file data. So a run that ended mid-file keeps Load disabled for 6 s first.
+const RECEIVER_RECOVERY_MS = 6000;
+
+function endRun() {
+  busy = false;
+  activeAbort = null;
+  stopBtn.disabled = true;
+  loadBtn.disabled = !('serial' in navigator);
+}
+
+async function recoverReceiver() {
+  if (!midFile) { midFile = false; return; }
+  midFile = false;
+  log(`The board is still finishing the interrupted file (its serial reader
+ times out after ~5 s). Waiting ${RECEIVER_RECOVERY_MS / 1000} s before you
+can try again…`);
+  await new Promise((r) => setTimeout(r, RECEIVER_RECOVERY_MS));
+  log('Board ready. You can press Load Sprites again.');
+}
+
+loadBtn.onclick = async () => {
+  if (busy) { log('Already loading — press Stop first if you need to cancel.'); return; }
+  if (!('serial' in navigator)) {
+    document.getElementById('unsupported').style.display = 'block';
+    return;
+  }
+  busy = true; aborted = false;
+  activeAbort = new AbortController();   // Stop aborts in-flight downloads too
+  const runAbort = activeAbort;
+  loadBtn.disabled = true; stopBtn.disabled = false;
+  let allOk = true, filesSent = 0;
+  try {
+    await connect();
+    if (aborted) throw new Error('stopped');
+    log('Connected. Loading sprites…');
+    for (const region of REGION_PAKS) {
+      if (aborted) break;
+      const probe = await pakExists(region, runAbort.signal);
+      if (aborted) break;
+      if (probe === 'error') {
+        allOk = false;
+        log(`${region}: could not reach the sprite pack (network or server error).`);
+        log('Fix the connection and run it again.');
+        break;
+      }
+      if (probe === 'missing') {
+        log(`${region}: no pack found — skipped`);
+        continue;
+      }
+      log(`Downloading the ${region} sprite bundle (the slow part)…`);
+      const items = parsePak(await fetchPak(region, runAbort.signal));
+      if (aborted) break;
+      log(`${region}: ${items.length} files in its Mon folder. Sending over USB…`);
+      const ok = await sendAll(items);
+      if (!ok) { allOk = false; break; }
+      filesSent += items.length;
+      if (aborted) break;
+      log(`${region} done.`);
+    }
+  } catch (e) {
+    allOk = false;
+    if (!aborted) {
+      log('Could not load sprites: ' + e.message);
+      log('If the board was just flashed in step 1, close that dialog and try again.');
+    }
+  } finally {
+    await disconnect();                      // the one and only teardown
+    if (aborted) {
+      log('Stopped. Files that were mid-transfer are incomplete — run Load Sprites again to finish.');
+    } else if (!allOk) {
+      log('The transfer did NOT finish — some sprites may be missing. Run Load Sprites again.');
+    } else if (filesSent === 0) {
+      log('No sprite packs were found — neither next to this page nor on the public release. Nothing was sent.');
+    } else {
+      log(`All available sprites are now in the Mon folder on the SD card (${filesSent} files). Restart the board (PWR button).`);
+    }
+    await recoverReceiver();                  // Load stays disabled until the
+    endRun();                                 // board is out of its interrupted file
+  }
+};
+
+stopBtn.onclick = () => {
+  if (!busy) return;
+  // Cancel: the flag unwinds the transfer loop, the abort controller kills
+  // any in-flight download, and the run's own finally block does the single
+  // disconnect and re-enables Load — so Stop can never race the teardown.
+  aborted = true;
+  if (activeAbort) activeAbort.abort();
+  stopBtn.disabled = true;
+};
+
+// Manual path: a Mon folder picked on this computer. Every .bin file inside
+// is sent by its plain file name, so it lands in /mons on the card.
+async function sendLocalFiles(fileList) {
+  if (busy) { log('Already loading — press Stop first if you need to cancel.'); return; }
+  if (!('serial' in navigator)) {
+    document.getElementById('unsupported').style.display = 'block';
+    return;
+  }
+  const files = [...fileList].filter((f) => f.name.toLowerCase().endsWith('.bin'));
+  if (!files.length) { log('No .bin files in that selection.'); return; }
+  busy = true; aborted = false;
+  activeAbort = new AbortController();
+  loadBtn.disabled = true; stopBtn.disabled = false;
+  try {
+    await connect();
+    const items = [];
+    for (const f of files)
+      items.push({ name: 'mons/' + f.name, data: new Uint8Array(await f.arrayBuffer()) });
+    if (aborted) return;
+    log(`${items.length} files. Sending…`);
+    await sendAll(items);
+  } catch (e) {
+    log('Could not send: ' + e.message);
+  } finally {
+    await disconnect();
+    await recoverReceiver();
+    endRun();
+  }
+}
+
+document.getElementById('dir').onchange = (ev) => {
+  sendLocalFiles(ev.target.files);
+  ev.target.value = '';   // allow re-picking the same folder
+};
+document.getElementById('files').onchange = (ev) => {
+  sendLocalFiles(ev.target.files);
+  ev.target.value = '';
+};
+
+if (!('serial' in navigator)) {
+  document.getElementById('unsupported').style.display = 'block';
+  loadBtn.disabled = true;
+}
+</script>
+<script data-pplx-inline-edit>
+(function () {
+  if (window === window.top) return;
+
+  const allowedParentOrigins = ["https://www.perplexity.ai","https://perplexity.ai","https://testing.perplexity.ai","https://staging.perplexity.ai","https://*.preview.i.perplexity.ai","http://perplexity.localhost","http://localhost:1420","http://127.0.0.1:1420","http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"];
+  const MAX_FONT_BYTES = 500 * 1024;
+  const MAX_TOTAL_FONT_BYTES = 2 * 1024 * 1024;
+  const DEFAULT_LINE_HEIGHT = 16;
+  let scrollForwarding = false;
+  let scrollRaf = 0;
+  let trustedTopOrigin = null;
+
+  // Allow entries like "https://*.preview.i.perplexity.ai" — the wildcard
+  // matches a single DNS label (no dots), so "https://*.foo" cannot stretch
+  // across multiple labels.
+  function matchesAllowedOrigin(origin) {
+    if (!origin) return false;
+    for (const entry of allowedParentOrigins) {
+      if (!entry.includes("*")) {
+        if (entry === origin) return true;
+        continue;
+      }
+      const pattern = new RegExp(
+        "^" +
+          entry.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, "[^.]+") +
+          "$",
+      );
+      if (pattern.test(origin)) return true;
+    }
+    return false;
+  }
+
+  // Trust decision: when the sender is same-origin-visible (event.origin is a
+  // real origin like https://www.perplexity.ai) we trust event.origin directly.
+  // When event.origin is "null" (opaque broker srcdoc), we fall back to the
+  // broker's stamped `parentOrigin` to identify the top window. The fallback
+  // is claim-only — we rely on the browser's native `targetOrigin` enforcement
+  // on the response path (see postToTrustedTop) to ensure replies can't be
+  // delivered to anyone but the actual top window of that claimed origin.
+  function getTrustedParentOrigin(event) {
+    const forwardedParentOrigin =
+      typeof event.data.parentOrigin === "string" ? event.data.parentOrigin : null;
+    const parentOrigin = event.origin === "null" ? forwardedParentOrigin : event.origin;
+    return matchesAllowedOrigin(parentOrigin) ? parentOrigin : null;
+  }
+
+  // All responses go to window.top with targetOrigin = the allowlisted origin.
+  // An attacker that iframes us inside their own null-origin broker can claim
+  // any parentOrigin they like, but the browser will drop the reply whenever
+  // the real top's origin doesn't match — so the screenshot never leaves.
+  function postToTrustedTop(message) {
+    if (!trustedTopOrigin) return;
+    try {
+      window.top.postMessage(message, trustedTopOrigin);
+    } catch (_error) {}
+  }
+
+  const PICK_CAPABILITIES = ["pick"];
+  const PICK_CHAIN_LENGTH = 4;
+  const PICK_MAX_TEXT_CHARS = 120;
+  const PICK_MAX_HTML_CHARS = 300;
+
+  function truncate(value, maxChars) {
+    return value.length > maxChars ? value.slice(0, maxChars - 1) + "…" : value;
+  }
+
+  function isPickableElement(element) {
+    return (
+      element instanceof Element &&
+      element !== document.documentElement &&
+      element !== document.body
+    );
+  }
+
+  function resolvePickTarget(x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    const element = document.elementFromPoint(x, y);
+    return isPickableElement(element) ? element.closest("svg") || element : null;
+  }
+
+  function pickLabel(element) {
+    if (element.id) return element.localName + "#" + element.id;
+    return [element.localName].concat(Array.from(element.classList).slice(0, 2)).join(".");
+  }
+
+  // Only attributes that help find the element in source. data-* values and URL
+  // query strings or fragments can carry tokens.
+  const PICK_ATTRIBUTES = new Set([
+    "id",
+    "class",
+    "name",
+    "type",
+    "role",
+    "alt",
+    "aria-label",
+    "href",
+    "src",
+  ]);
+
+  function pickAttributeValue(attribute) {
+    return attribute.name === "href" || attribute.name === "src"
+      ? attribute.value.split(/[?#]/)[0]
+      : attribute.value;
+  }
+
+  function describePickElement(element) {
+    const chain = [];
+    for (
+      let current = element;
+      isPickableElement(current) && chain.length < PICK_CHAIN_LENGTH;
+      current = current.parentElement
+    ) {
+      chain.unshift(current);
+    }
+    const attributes = Array.from(element.attributes)
+      .filter((attribute) => PICK_ATTRIBUTES.has(attribute.name))
+      .map((attribute) => ` ${attribute.name}="${pickAttributeValue(attribute).replace(/"/g, "&quot;")}"`)
+      .join("");
+    const text = (element.innerText || element.textContent || "").replace(/\s+/g, " ").trim();
+    return {
+      chain: chain.map(pickLabel),
+      html: truncate(`<${element.localName}${attributes}>`, PICK_MAX_HTML_CHARS),
+      text: text ? truncate(text, PICK_MAX_TEXT_CHARS) : undefined,
+    };
+  }
+
+  // Hover asks once per frame, and innerText on a large section forces layout,
+  // so only the rect is re-read while the pointer stays on the same element.
+  // Clicks ask for fresh details since the page may have changed the element.
+  let lastPick = null;
+
+  function describePickTarget(element, fresh) {
+    if (fresh || lastPick?.element !== element) {
+      lastPick = { element, details: describePickElement(element) };
+    }
+    const rect = element.getBoundingClientRect();
+    return {
+      rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+      ...lastPick.details,
+    };
+  }
+
+  function inlineAll(original, clone) {
+    if (original.nodeType !== 1 || clone.nodeType !== 1) return;
+
+    try {
+      const computedStyle = getComputedStyle(original);
+      // cssText on a computed style is the serialized declaration in modern
+      // Chromium/Safari — a single read beats enumerating ~400 longhand
+      // properties. Firefox returns "" here, so we fall back on empty.
+      const serialized = computedStyle.cssText;
+      if (serialized) {
+        clone.style.cssText = serialized;
+      } else {
+        const parts = new Array(computedStyle.length);
+        for (let index = 0; index < computedStyle.length; index += 1) {
+          const property = computedStyle[index];
+          parts[index] = `${property}:${computedStyle.getPropertyValue(property)};`;
+        }
+        clone.style.cssText = parts.join("");
+      }
+    } catch (_error) {}
+
+    const originalChildren = original.children;
+    const clonedChildren = clone.children;
+    for (
+      let index = 0;
+      index < originalChildren.length && index < clonedChildren.length;
+      index += 1
+    ) {
+      inlineAll(originalChildren[index], clonedChildren[index]);
+    }
+  }
+
+  function extractFontUrl(srcValue) {
+    const matches = [
+      ...srcValue.matchAll(
+        /url\(["']?([^"')]+)["']?\)(?:\s*format\(["']?([^"')]+)["']?\))?/gi,
+      ),
+    ];
+    if (matches.length === 0) return null;
+    const woff2 = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff2"));
+    if (woff2) return woff2[1];
+    const woff = matches.find((m) => m[2] && m[2].toLowerCase().includes("woff"));
+    if (woff) return woff[1];
+    return matches[0][1];
+  }
+
+  // Cache resolved font URL -> data URI across captures. Fonts on a page
+  // essentially never change, and a batch run emits multiple captures back to
+  // back — without this we'd refetch + re-base64 every time.
+  const fontDataUriCache = new Map();
+  const SRC_DECLARATION_RE = /src\s*:\s*[^;}]+/i;
+
+  async function fetchAsDataUri(url) {
+    if (fontDataUriCache.has(url)) return fontDataUriCache.get(url);
+    let dataUri = null;
+    try {
+      const response = await fetch(url, { mode: "cors", credentials: "omit" });
+      if (response.ok) {
+        const blob = await response.blob();
+        if (blob.size <= MAX_FONT_BYTES) {
+          dataUri = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () =>
+              resolve(typeof reader.result === "string" ? reader.result : null);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        }
+      }
+    } catch (_error) {
+      dataUri = null;
+    }
+    fontDataUriCache.set(url, dataUri);
+    return dataUri;
+  }
+
+  function collectFontFaceRuleTexts() {
+    const rules = [];
+    for (const sheet of document.styleSheets) {
+      let cssRules;
+      try {
+        cssRules = sheet.cssRules;
+      } catch (_error) {
+        continue;
+      }
+      if (!cssRules) continue;
+      for (const rule of cssRules) {
+        const cssText = rule.cssText || "";
+        if (cssText.startsWith("@font-face")) rules.push(cssText);
+      }
+    }
+    return rules;
+  }
+
+  async function buildInlinedFontCss() {
+    const ruleTexts = collectFontFaceRuleTexts();
+    if (ruleTexts.length === 0) return null;
+
+    const resolved = ruleTexts.map((cssText) => {
+      if (!SRC_DECLARATION_RE.test(cssText)) return null;
+      const srcMatch = cssText.match(/src\s*:\s*([^;}]+)[;}]/i);
+      if (!srcMatch) return null;
+      const url = extractFontUrl(srcMatch[1]);
+      if (!url) return null;
+      try {
+        return { cssText, url: new URL(url, document.baseURI).href };
+      } catch (_error) {
+        return null;
+      }
+    });
+
+    const dataUris = await Promise.all(
+      resolved.map((entry) => (entry ? fetchAsDataUri(entry.url) : Promise.resolve(null))),
+    );
+
+    const inlined = [];
+    let totalBytes = 0;
+    for (let index = 0; index < resolved.length; index += 1) {
+      const entry = resolved[index];
+      const dataUri = dataUris[index];
+      if (!entry || !dataUri) continue;
+      const approxBytes = dataUri.length * 0.75;
+      if (totalBytes + approxBytes > MAX_TOTAL_FONT_BYTES) break;
+      totalBytes += approxBytes;
+      inlined.push(entry.cssText.replace(SRC_DECLARATION_RE, `src: url("${dataUri}")`));
+    }
+    return inlined.length > 0 ? inlined.join("\n") : null;
+  }
+
+  function stripExternal(clone) {
+    const images = clone.querySelectorAll("img");
+    for (let index = 0; index < images.length; index += 1) {
+      const src = images[index].getAttribute("src");
+      if (src && !src.startsWith("data:")) images[index].removeAttribute("src");
+    }
+
+    const elements = clone.querySelectorAll("*");
+    for (let index = 0; index < elements.length; index += 1) {
+      const style = elements[index].style.cssText;
+      if (style && style.includes("url(")) {
+        elements[index].style.cssText = style.replace(
+          /url\(["']?(?!data:)[^)"']*["']?\)/gi,
+          "none",
+        );
+      }
+    }
+  }
+
+  function emitScroll() {
+    scrollRaf = 0;
+    if (!scrollForwarding) return;
+    postToTrustedTop({
+      type: "INLINE_EDIT_SCROLL",
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      capabilities: PICK_CAPABILITIES,
+    });
+  }
+
+  window.addEventListener(
+    "scroll",
+    function () {
+      if (!scrollForwarding || scrollRaf) return;
+      scrollRaf = requestAnimationFrame(emitScroll);
+    },
+    { passive: true, capture: true },
+  );
+
+  async function handleCaptureRequest(event) {
+    const requestId = event.data.requestId;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    function postResult(dataUrl) {
+      postToTrustedTop({
+        type: "INLINE_EDIT_SCREENSHOT_RESULT",
+        requestId,
+        dataUrl,
+        scrollX,
+        scrollY,
+      });
+    }
+
+    try {
+      // Wait for any pending web fonts to resolve so both inline metrics and
+      // the @font-face inlining below see the same loaded faces.
+      if (document.fonts && document.fonts.ready) {
+        try {
+          await document.fonts.ready;
+        } catch (_error) {}
+      }
+
+      const clone = document.documentElement.cloneNode(true);
+      inlineAll(document.documentElement, clone);
+
+      const removedNodes = clone.querySelectorAll("script,link[rel=\"stylesheet\"],style");
+      for (let index = 0; index < removedNodes.length; index += 1) {
+        removedNodes[index].remove();
+      }
+
+      stripExternal(clone);
+
+      // Re-embed web fonts as data-URI @font-face rules so the SVG rasterizer
+      // can resolve them — external font URLs aren't fetched during
+      // foreignObject rendering, which would otherwise force a fallback face
+      // and change text metrics.
+      const inlinedFontCss = await buildInlinedFontCss();
+      if (inlinedFontCss) {
+        const styleEl = document.createElement("style");
+        styleEl.textContent = inlinedFontCss;
+        const head = clone.querySelector("head");
+        if (head) head.appendChild(styleEl);
+        else clone.insertBefore(styleEl, clone.firstChild);
+      }
+
+      const html = new XMLSerializer().serializeToString(clone);
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
+        '<foreignObject width="100%" height="100%">' +
+        `<div xmlns="http://www.w3.org/1999/xhtml" style="width:${width}px;height:${height}px;overflow:hidden">` +
+        `<div style="position:relative;left:-${scrollX}px;top:-${scrollY}px">` +
+        html +
+        "</div></div></foreignObject></svg>";
+      const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      const image = new Image();
+      image.onload = function () {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext("2d").drawImage(image, 0, 0);
+        postResult(canvas.toDataURL("image/png"));
+      };
+      image.onerror = function () {
+        postResult(null);
+      };
+      image.src = svgUrl;
+    } catch (_error) {
+      postResult(null);
+    }
+  }
+
+  window.addEventListener("message", function (event) {
+    if (!event.data) return;
+    // Only accept messages from the direct parent frame. Blocks sibling /
+    // unrelated-window postMessage senders that could otherwise reach us.
+    if (event.source !== window.parent) return;
+
+    const trustedParentOrigin = getTrustedParentOrigin(event);
+    if (!trustedParentOrigin) return;
+    trustedTopOrigin = trustedParentOrigin;
+
+    if (event.data.type === "INLINE_EDIT_PICK") {
+      const element = resolvePickTarget(event.data.x, event.data.y);
+      postToTrustedTop({
+        type: "INLINE_EDIT_PICK_RESULT",
+        seq: event.data.seq,
+        target: element ? describePickTarget(element, event.data.fresh === true) : null,
+      });
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_START") {
+      scrollForwarding = true;
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_STOP") {
+      scrollForwarding = false;
+      if (scrollRaf) cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+      return;
+    }
+
+    if (event.data.type === "INLINE_EDIT_SCROLL_BY") {
+      const { deltaX, deltaY, deltaMode } = event.data;
+      if (!scrollForwarding || !Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return;
+      if (deltaMode !== 0 && deltaMode !== 1 && deltaMode !== 2) return;
+      const lineHeight =
+        parseFloat(getComputedStyle(document.documentElement).lineHeight) || DEFAULT_LINE_HEIGHT;
+      const scaleX = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerWidth : 1;
+      const scaleY = deltaMode === 1 ? lineHeight : deltaMode === 2 ? window.innerHeight : 1;
+      // The selection overlay receives the wheel event instead of this iframe.
+      // Instant scrolling preserves trackpad deltas even on smooth-scroll sites.
+      window.scrollBy({ left: deltaX * scaleX, top: deltaY * scaleY, behavior: "instant" });
+      emitScroll();
+      return;
+    }
+
+    if (event.data.type !== "INLINE_EDIT_CAPTURE_REQUEST") return;
+
+    handleCaptureRequest(event);
+  });
+})();
+
+
+</script></body>
+</html>
