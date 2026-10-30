@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Check the Johto, Hoenn and Sinnoh ladders in trainers.h against the real games.\n\nUNOVA IS NOT CHECKED: pret has no Gen 5 disassembly. The script says so out\nloud rather than letting a clean run imply otherwise.
+"""Check the Johto, Hoenn and Sinnoh ladders in trainers.h against the real games.
+
+Kanto was checked by hand. UNOVA, KALOS, ALOLA, GALAR AND PALDEA ARE NOT CHECKED:
+pret has no disassembly for Gen 5 onwards. The script says so out loud, listing
+every unchecked ladder it finds in trainers.h, rather than letting a clean run
+imply otherwise.
 
     python3 tools/verify_rosters.py
 
@@ -202,9 +207,9 @@ def main():
                 continue
             print('=== %s: NOT VERIFIED' % r)
             print('  %d trainers written from knowledge, not from a disassembly.' % len(team))
-        print('  pret has no Gen 5 or Gen 6 decomp -- their work stops at the DS')
-        print('  generation. If one appears, add it here: the same recall')
-        print('  produced ten errors in Johto and Hoenn.')
+        print('  pret has no decomp for Gen 5 onwards -- their work stops at the DS')
+        print('  generation (Platinum). If one appears, add it here: the same')
+        print('  recall produced ten errors in Johto and Hoenn.')
     return 1 if n else 0
 
 

@@ -9,6 +9,8 @@ What it does, in order:
      also fixes a disagreement)
   2. compile the sketch with arduino-cli (ESP32-S3, the board config from
      CLAUDE.md)
+  3. (also keeps the "Firmware: X.Y" pill in web/index.html in step with the
+     version - it is typed into the page, not read from the manifest)
   3. stage the four flash parts and the merged whole-flash image, and only
      after a successful compile publish them to web/firmware/ and bump
      FW_VERSION + the manifest version - a compile or staging failure leaves
@@ -261,6 +263,25 @@ def merged_image(manifest, part_blobs):
     return bytes(image)
 
 
+PILL_RE = re.compile(r'(Firmware:\s*<b>)[^<]*(</b>)')
+
+
+def pill_update(new_version):
+    """The version pill in web/index.html is hardcoded text. Returns the new
+    index.html text, or None (with a warning) if the pill is not found - a
+    missing anchor must be loud, never a silent no-op."""
+    path = os.path.join(WEB, 'index.html')
+    if not os.path.isfile(path):
+        print('warning: web/index.html not found - version pill not updated')
+        return None
+    src = read_text(path)
+    if len(PILL_RE.findall(src)) != 1:
+        print('warning: could not find exactly one "Firmware: <b>X.Y</b>" pill '
+              'in web/index.html - update it by hand to %s' % new_version)
+        return None
+    return PILL_RE.sub(r'\g<1>%s\g<2>' % new_version, src, count=1)
+
+
 def publish(staged, manifest, new_version):
     """staged: list of (web-relative path, bytes). Only called after the
     compile succeeded. Writes the files and rolls back anything already
@@ -283,6 +304,12 @@ def publish(staged, manifest, new_version):
             m['version'] = new_version
             write_json(mpath, m)
             print('  version -> %s (TamaPoke.ino + web/manifest.json)' % new_version)
+            page = pill_update(new_version)
+            if page is not None:
+                ipath = os.path.join(WEB, 'index.html')
+                written.append((ipath, open(ipath, 'rb').read()))
+                write_text(ipath, page)
+                print('  version pill -> %s (web/index.html)' % new_version)
     except BaseException:
         for path, old in reversed(written):        # best-effort rollback
             try:

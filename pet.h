@@ -227,6 +227,15 @@ public:
     for (uint16_t d = lo; d <= hi && d <= DEX_COUNT; d++) if (isRegistered(d)) n++;
     return n;
   }
+  // Same tally for DISPLAY, counting raised OR wild-caught (isKnown). The
+  // gameplay rules (egg odds, legendary threshold) keep using registeredCount*
+  // so a catch cannot shift the documented balance.
+  uint16_t knownCountIn(uint16_t lo, uint16_t hi) const {
+    uint16_t n = 0;
+    for (uint16_t d = lo; d <= hi && d <= DEX_COUNT; d++) if (isKnown(d)) n++;
+    return n;
+  }
+  uint16_t knownCount() const;
 
   uint8_t avatar = 0;       // which player sprite, 0..3
   // Kanto's ladder, under the keys it has always used. Johto and Hoenn live in

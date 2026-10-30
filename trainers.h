@@ -4,7 +4,8 @@
 
 // The gym ladders: 8 leaders, the Elite 4 and the Champion for each region,
 // with their real teams and levels -- Kanto from FireRed/LeafGreen, Johto from
-// Gold/Silver/Crystal, Hoenn from Ruby/Sapphire/Emerald.
+// Gold/Silver/Crystal, Hoenn from Ruby/Sapphire/Emerald, and on through Sinnoh,
+// Unova, Kalos, Alola, Galar (Sword/Shield) and Paldea (Scarlet/Violet).
 //
 // HAND-AUTHORED -- not generated. The levels are the real ones and they happen
 // to fit this game's curve almost exactly: level is age at 1/hour, a pet retires
@@ -220,7 +221,8 @@ static const Trainer TRAINERS_KALOS[TRAINER_COUNT] = {
 // free to be the real Sun/Moon Elite Four, with no trainer appearing twice.
 //
 // Alola has no badge art anywhere (SteGriff stops at Unova; the Kalos sheet is
-// one artist's). BADGE_REGIONS stays 6 while GYM_REGIONS becomes 7, and
+// one artist's). BADGE_REGIONS stays 6 while GYM_REGIONS is now 9 (Galar and Paldea have no
+// badge art either, and draw the plain medal too), and
 // badgeArtFor() returns nullptr for Alola so the win screen and player card draw
 // the plain type-coloured medal instead of borrowing another region's badges.
 static const Trainer TRAINERS_ALOLA[TRAINER_COUNT] = {
@@ -239,7 +241,68 @@ static const Trainer TRAINERS_ALOLA[TRAINER_COUNT] = {
   { "KUKUI",    "CHAMPION",  T_NORMAL,   6, { {745,57},{38,56},{628,56},{462,56},{143,56},{727,58} } },
 };
 
-#define GYM_REGIONS 7
+// GALAR -- SWORD / SHIELD, and *** NOT VERIFIED AGAINST A DISASSEMBLY ***, for
+// the same reason Unova, Kalos and Alola are not: there is no Gen 8 decomp.
+// Written from the games as recalled; treat every level as approximate.
+//
+// GALAR HAS NO ELITE FOUR. It has eight gym leaders, a Champion Cup final
+// against Leon, and a roster of rivals and post-game gym leaders. The gym slots
+// are the eight leaders of ONE route through the Gym Challenge -- the Sword
+// side, so Bea and Gordie -- and the four "Elite 4" slots are the people the
+// route leaves out or the Cup puts in front of you: Allister and Melony (the
+// Shield-side leaders, so no trainer appears twice and neither is lost), then
+// Marnie and Bede. Their levels are NOT from the games, which only have them at
+// gym-challenge levels: they are set to the same curve as the other regions'
+// Elite 4 (mid-50s), and Leon keeps his real Champion Cup team and levels.
+//
+// DELIBERATE SUBSTITUTIONS, because SpriteCollab has no art for these and a
+// leader should never lead with a bare dex number (roster_test enforces it):
+//   GORDIE   COALOSSAL 839  -> RHYPERIOR 464   (Rock, bulky, same ace slot)
+//   LEON     MR. RIME  866  -> JYNX 124        (Ice/Psychic, the same typing)
+// Galarian forms are not modelled by this game, so OPAL's WEEZING is the
+// ordinary Kanto one.
+static const Trainer TRAINERS_GALAR[TRAINER_COUNT] = {
+  { "MILO",      "TURFFIELD",     T_GRASS,    2, { {829,19},{830,20} } },
+  { "NESSA",     "HULBURY",       T_WATER,    3, { {118,22},{846,23},{834,24} } },
+  { "KABU",      "MOTOSTOKE",     T_FIRE,     3, { {38,25},{59,25},{851,27} } },
+  { "BEA",       "STOW-ON-SIDE",  T_FIGHTING, 4, { {237,34},{675,34},{865,35},{68,36} } },
+  { "OPAL",      "BALLONLEA",     T_FAIRY,    4, { {110,36},{869,36},{468,37},{282,38} } },
+  { "GORDIE",    "CIRCHESTER",    T_ROCK,     4, { {689,40},{213,40},{874,41},{464,42} } },
+  { "PIERS",     "SPIKEMUTH",     T_DARK,     4, { {560,44},{687,45},{435,45},{862,46} } },
+  { "RAIHAN",    "HAMMERLOCKE",   T_DRAGON,   4, { {526,46},{330,47},{844,46},{884,48} } },
+  { "ALLISTER",  "ELITE 4",       T_GHOST,    4, { {778,56},{477,56},{864,56},{94,58} } },
+  { "MELONY",    "ELITE 4",       T_ICE,      4, { {873,56},{875,56},{131,56},{473,58} } },
+  { "MARNIE",    "ELITE 4",       T_DARK,     4, { {510,56},{454,56},{560,56},{861,58} } },
+  { "BEDE",      "ELITE 4",       T_FAIRY,    4, { {303,56},{282,56},{869,56},{858,58} } },
+  { "LEON",      "CHAMPION",      T_DRAGON,   6, { {681,62},{887,62},{612,63},{537,64},{124,64},{6,65} } },
+};
+
+// PALDEA -- SCARLET / VIOLET, and *** NOT VERIFIED AGAINST A DISASSEMBLY ***:
+// no Gen 9 decomp either. Paldea's open-world order is up to the player, so the
+// gym slots use the order the game's own level scaling suggests, easiest first.
+//
+// DELIBERATE SUBSTITUTIONS, again for missing art:
+//   TULIP    ESPATHRA 956  -> ALAKAZAM 65      (fast special Psychic)
+//   GEETA    ESPATHRA 956  -> ALAKAZAM 65      (the same; her ace stays Glimmora)
+//   E4       the real fourth member is LARRY, who is ALSO the fifth gym leader
+//            above. NEMONA takes the slot instead so that no trainer appears
+//            twice, as in the Alola ladder.
+static const Trainer TRAINERS_PALDEA[TRAINER_COUNT] = {
+  { "KATY",      "CORTONDO",      T_BUG,      3, { {919,14},{917,14},{216,15} } },
+  { "BRASSIUS",  "ARTAZON",       T_GRASS,    3, { {548,16},{928,16},{185,17} } },
+  { "IONO",      "LEVINCIA",      T_ELECTRIC, 4, { {940,23},{939,23},{404,23},{429,24} } },
+  { "KOFU",      "MEDALI",        T_WATER,    3, { {976,29},{961,29},{740,30} } },
+  { "LARRY",     "CASCARRAFA",    T_NORMAL,   3, { {397,35},{357,35},{916,36} } },
+  { "RYME",      "MONTENEVERA",   T_GHOST,    4, { {354,41},{778,41},{972,41},{849,42} } },
+  { "TULIP",     "ALFORNADA",     T_PSYCHIC,  4, { {981,44},{282,44},{65,44},{671,45} } },
+  { "GRUSHA",    "GLASEADO",      T_ICE,      4, { {873,47},{614,47},{975,47},{334,48} } },
+  { "RIKA",      "ELITE 4",       T_GROUND,   4, { {340,57},{323,57},{232,57},{980,58} } },
+  { "POPPY",     "ELITE 4",       T_STEEL,    4, { {879,57},{462,57},{437,57},{959,58} } },
+  { "HASSEL",    "ELITE 4",       T_DRAGON,   4, { {715,57},{691,57},{612,57},{998,58} } },
+  { "NEMONA",    "ELITE 4",       T_NORMAL,   4, { {745,57},{706,57},{923,57},{982,58} } },
+  { "GEETA",     "CHAMPION",      T_PSYCHIC,  6, { {65,61},{673,61},{976,61},{713,61},{983,61},{970,62} } },
+};
+#define GYM_REGIONS 9
 static const TrainerSet TRAINER_SETS[GYM_REGIONS] = {
   { TRAINERS_KANTO,  "KANTO" },
   { TRAINERS_JOHTO,  "JOHTO" },
@@ -248,6 +311,8 @@ static const TrainerSet TRAINER_SETS[GYM_REGIONS] = {
   { TRAINERS_UNOVA,  "UNOVA" },
   { TRAINERS_KALOS,  "KALOS" },
   { TRAINERS_ALOLA,  "ALOLA" },
+  { TRAINERS_GALAR,  "GALAR" },
+  { TRAINERS_PALDEA, "PALDEA" },
 };
 
 // Hard mode reruns the same ladder with perfect IVs and a smarter AI, so the

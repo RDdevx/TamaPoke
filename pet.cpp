@@ -923,6 +923,14 @@ uint16_t Pet::registeredCount() const {
   return n;
 }
 
+// Display tally: raised OR wild-caught, placeholders excluded
+uint16_t Pet::knownCount() const {
+  uint16_t n = 0;
+  for (int i = 1; i <= DEX_COUNT; i++)
+    if (dexSlotPlayable(i) && isKnown(i)) n++;
+  return n;
+}
+
 // forma final que ya cumplio su ciclo (7 dias): lista para despedirse. La
 // despedida la dispara el usuario con el boton (no salta sola, para que la vea)
 bool Pet::canFarewellNow() const {
