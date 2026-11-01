@@ -81,6 +81,27 @@ uint8_t regionOfDex(int16_t d);
 // REGION_COUNT, which would land on a locked region and silently do nothing.
 uint8_t nextAvailableRegion(uint8_t from);
 
+// A Pet is COPIED in one place: buildSquad() levels a copy down to a gym's
+// cap. A bare `Preferences` member copies its NVS handle AND its "started" flag,
+// so when the copy goes out of scope its destructor CLOSES THE LIVE PET'S
+// HANDLE. Every save() after the first gym battle then fails silently -- the
+// badge you just won, training, the Pokedex -- and the next reboot or reflash
+// brings back the old save. These two wrappers make a copy a harmless scratch
+// object: no handle, and "not opened", so its save() returns early.
+struct PetPrefs : public Preferences {
+  PetPrefs() {}
+  PetPrefs(const PetPrefs &) : Preferences() {}
+  PetPrefs &operator=(const PetPrefs &) { return *this; }
+};
+struct OpenFlag {
+  bool v = false;
+  OpenFlag() {}
+  OpenFlag(const OpenFlag &) : v(false) {}
+  OpenFlag &operator=(const OpenFlag &) { return *this; }
+  OpenFlag &operator=(bool b) { v = b; return *this; }
+  operator bool() const { return v; }
+};
+
 class Pet {
 public:
   // Estadisticas 0..100
@@ -438,7 +459,7 @@ public:
   void saveNow();
 
 private:
-  Preferences prefs;
+  PetPrefs prefs;
   // A Pet that was never begin()'d MUST NOT WRITE. Nothing enforced that, and
   // the battle code builds its opponent as a throwaway Pet:
   //
@@ -453,7 +474,7 @@ private:
   //
   // The rule belongs here rather than at the call sites: every future throwaway
   // Pet is covered without anyone having to remember.
-  bool opened = false;
+  OpenFlag opened;
   uint32_t lastTick = 0;
   uint32_t eatUntil = 0;
   uint32_t heartUntil = 0;

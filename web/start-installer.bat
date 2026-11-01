@@ -24,9 +24,14 @@ if not defined PY (
 )
 
 echo Starting the TamaPoke installer at http://localhost:8000 ...
-start "TamaPoke server" %PY% -m http.server 8000
+if not exist serve_nocache.py (
+  echo serve_nocache.py is missing - keep it next to this file.
+  pause
+  exit /b 1
+)
+start "TamaPoke server" cmd /k %PY% serve_nocache.py 8000
 timeout /t 2 /nobreak >nul
-start http://localhost:8000
+start http://localhost:8000/?v=%RANDOM%%RANDOM%
 echo.
 echo A "TamaPoke server" window opened - leave it running while you install.
 echo Close that window when you are done.
