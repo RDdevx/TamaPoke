@@ -8,7 +8,15 @@
 // Only the two endings the player CHOOSES bank a pet -- farewell and release.
 // A runaway does not: it is the game's one punishing outcome, and letting a
 // neglected pet come back as a team member would take the sting out of it.
-#define PARTY_SLOTS 6
+// BANKED slots. The live pet is the sixth member of the party, so a full party
+// is 1 live + PARTY_SLOTS banked = 6 (PARTY_TOTAL). Saves written when this was
+// 6 still hold six records; Party::begin() moves the extra one to the box.
+#define PARTY_SLOTS 5
+#define PARTY_TOTAL (PARTY_SLOTS + 1)
+// The slot count the "party" blob was written with before it became 5. Used only
+// to infer the record stride of an old, shorter-stride blob -- NOT tied to
+// PARTY_SLOTS, which is exactly the trap CLAUDE.md warns about.
+#define PARTY_LEGACY_SLOTS 6
 // The box: storage beyond the six that fight. Deliberately a SEPARATE NVS key
 // rather than a bigger party blob -- growing that blob would change its stride
 // and the length-based migration in begin() cannot tell a stride change from a

@@ -20,32 +20,40 @@ void Party::begin() {
   // reliably catch it, since a stray byte is often a valid Pokedex number.
   // So migrate by length: copy each old record into the front of the new one
   // and leave moves[] zeroed for the learnset to fill in.
+  // The record stride is inferred from the stored length, NEVER from
+  // PARTY_SLOTS (the old code did `stored / PARTY_SLOTS`, which is right when
+  // the stride grows and wrong when the slot count does). Two layouts are
+  // recognised: records at our own stride (any count), or a pre-moves blob
+  // written with PARTY_LEGACY_SLOTS shorter records. Anything else is left
+  // empty rather than read misaligned.
+  //
+  // Records beyond PARTY_SLOTS (a save from the six-slot era) are NOT dropped:
+  // they are moved to the box once it is loaded, below.
+  PartyMon spill[PARTY_LEGACY_SLOTS];
+  uint8_t spillN = 0;
+  bool rewrite = false;          // true once the blob must be saved in the new layout
   size_t stored = prefs.getBytesLength("party");
-  if (stored == sizeof(slots)) {
-    prefs.getBytes("party", slots, sizeof(slots));
-  } else if (stored > sizeof(slots) && stored % sizeof(PartyMon) == 0) {
-    // A blob from a build with MORE SLOTS at our own stride. Only this case is
-    // unambiguous: stored/sizeof(PartyMon) records, each laid out as we lay them
-    // out, so the first PARTY_SLOTS of them are ours to keep. Anything else that
-    // is merely "too long" could equally be the same slot count at a BIGGER
-    // stride, where a prefix read would land slot 1 at the wrong offset and
-    // invent a party out of misaligned bytes -- so that is left empty instead.
-    //
-    // getBytes copies NOTHING when the stored blob exceeds the buffer, so this
-    // has to go through a temporary of the stored size.
+  size_t stride = 0;
+  if (stored && stored % sizeof(PartyMon) == 0) stride = sizeof(PartyMon);
+  else if (stored && stored % PARTY_LEGACY_SLOTS == 0 &&
+           stored < PARTY_LEGACY_SLOTS * sizeof(PartyMon))
+    stride = stored / PARTY_LEGACY_SLOTS;
+  if (stride) {
+    // getBytes copies NOTHING when the stored blob exceeds the buffer, so the
+    // read always goes through a temporary of the stored size.
     uint8_t *tmp = (uint8_t *)malloc(stored);
-    if (tmp) {
-      if (prefs.getBytes("party", tmp, stored) == stored)
-        memcpy(slots, tmp, sizeof(slots));
-      free(tmp);
+    if (tmp && prefs.getBytes("party", tmp, stored) == stored) {
+      size_t n = stored / stride;
+      size_t keep = stride < sizeof(PartyMon) ? stride : sizeof(PartyMon);
+      for (size_t i = 0; i < n; i++) {
+        PartyMon r;                              // moves[] etc. stay zeroed
+        memcpy(&r, tmp + i * stride, keep);
+        if (i < PARTY_SLOTS) slots[i] = r;
+        else if (spillN < PARTY_LEGACY_SLOTS) spill[spillN++] = r;
+      }
+      rewrite = (stride != sizeof(PartyMon)) || n > PARTY_SLOTS;
     }
-  } else if (stored && stored % PARTY_SLOTS == 0 && stored < sizeof(slots)) {
-    size_t oldStride = stored / PARTY_SLOTS;
-    uint8_t old[sizeof(slots)];
-    prefs.getBytes("party", old, stored);
-    for (int i = 0; i < PARTY_SLOTS; i++)
-      memcpy(&slots[i], old + i * oldStride, oldStride);
-    save();   // rewrite in the current layout so this only happens once
+    free(tmp);
   }
   // a blob written by an older/newer build could hold nonsense; drop anything
   // that is not a real Pokedex number rather than indexing DEX_TBL with it
@@ -74,6 +82,16 @@ void Party::begin() {
     if (s.dex < 1 || s.dex > DEX_COUNT) s.dex = 0;
     s.nick[sizeof(s.nick) - 1] = 0;
   }
+  // The party shrank from six to five banked slots: whoever sat in the sixth
+  // goes to the box rather than vanishing. If the box has no room the stored
+  // blob is left untouched (so nothing is destroyed by loading) and this is
+  // tried again on the next boot.
+  bool allPlaced = true;
+  for (uint8_t i = 0; i < spillN; i++) {
+    if (spill[i].dex < 1 || spill[i].dex > DEX_COUNT) continue;   // empty/junk
+    if (!boxAdd(spill[i])) { allPlaced = false; break; }
+  }
+  if (rewrite && allPlaced) save();   // rewrite once, in the current layout
 }
 
 void Party::save() {

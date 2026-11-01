@@ -12,7 +12,7 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `pet.cpp/.h` | Game state machine: stats, tick, evolution, eggs, save/load, balance constants |
 | `species.h` / `dex.h` | The full dex: 1025 slots / 1018 included species entries (899–905 are Hisui placeholders), 10 regions incl. Galar + Paldea — names, typings, evolution chains, base stats, rarity tiers, favourite berry |
 | `types.h` | Type-effectiveness helpers over the generated 18x18 chart in `dex.h` |
-| `party.cpp/.h` | The 6 retired pets banked by farewell/release (not runaway) |
+| `party.cpp/.h` | The 5 banked pets (live pet + 5 = a party of 6) from farewell/release (not runaway); a 6th record in an old save moves to the box |
 | `i18n.cpp/.h` | 6-language string table (ES/EN/FR/DE/IT/PT) |
 | `audio.cpp/.h` | ES8311 codec over I2S |
 | `rtcbat.cpp/.h` | PCF85063 RTC + AXP2101 battery/PMU/PWR button |

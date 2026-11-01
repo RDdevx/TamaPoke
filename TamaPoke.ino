@@ -36,7 +36,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.15"
+#define FW_VERSION "3.16"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -149,13 +149,11 @@ char partyBannerName[14] = "";
 #define PARTY_CELL_H 70
 #define PARTY_GRID_X 78
 #define PARTY_GRID_Y 88
-// The party screen lists the LIVE pet first and then the six banked members:
-// seven cells, so four rows of two. The rows are shorter than the box's
-// (PARTY_CELL_H) so the grid still ends above the BOX button (y 312 with its
-// pad): 4 * 52 + 3 * 5 = 223 -> y 88..311. Cell k: 0 = live pet, 1..6 = banked
-// slot k-1. The box keeps its own geometry.
-#define PARTY_ROW_H 52
-#define PARTY_ROW_GAP 5
+// The party screen lists the LIVE pet first and then the banked members: the
+// party is six in all (1 live + PARTY_SLOTS banked), three rows of two. Cell k:
+// 0 = live pet, 1..PARTY_SLOTS = banked slot k-1. Same geometry as the box.
+#define PARTY_ROW_H PARTY_CELL_H
+#define PARTY_ROW_GAP 8
 #define PARTY_ROWS_X(k) (PARTY_GRID_X + ((k) % 2) * (PARTY_CELL_W + 10))
 #define PARTY_ROWS_Y(k) (PARTY_GRID_Y + ((k) / 2) * (PARTY_ROW_H + PARTY_ROW_GAP))
 
@@ -325,6 +323,7 @@ static int eggRegionTap(int16_t x, int16_t y);
 static void drawBtlBack();
 bool btlSwitchSwipe(int dir);
 static void drawBtlSwitchPager();
+static uint8_t partyTotal();   // live pet + banked members, out of PARTY_TOTAL
 static void btlLinkPoll();   // defined with the battle code, called from render()
 static void btlSwitchTo(uint8_t i);
 void btlResolve(uint8_t yourMove);
@@ -4676,7 +4675,7 @@ static void renderPlayerBadges() {
   snprintf(l, sizeof(l), T(S_POKEDEX_FMT), pet.knownCount(), DEX_REACHABLE);
   gfx->setCursor(CX - (int)strlen(l) * 6, 312);
   gfx->print(l);
-  snprintf(l, sizeof(l), T(S_PARTY_FMT), party.count());
+  snprintf(l, sizeof(l), T(S_PARTY_FMT), partyTotal());
   gfx->setCursor(CX - (int)strlen(l) * 6, 338);
   gfx->print(l);
 }
@@ -4861,6 +4860,12 @@ void renderSpeed() {
 // team to the leader's size, so the difference between a sweep and a wipe is
 // bringing the right type -- and the squad used to be simply whoever sat first
 // in the party.
+
+// The party as the player counts it: the live pet is member one (an egg is not
+// a member yet) and up to PARTY_SLOTS banked creatures follow, six in all.
+static uint8_t partyTotal() {
+  return (uint8_t)(party.count() + (pet.isEgg() ? 0 : 1));
+}
 
 // candidate n: 0 = the live pet, 1..PARTY_SLOTS = banked members
 bool pickExists(uint8_t n) {
@@ -5864,23 +5869,23 @@ static void drawPartyCell(int x, int y, int16_t dex, const char *nick,
   gfx->drawRoundRect(x, y, PARTY_CELL_W, PARTY_ROW_H, 10, live ? UI_BAR_WARN : UI_INK);
   if (live) gfx->drawRoundRect(x + 1, y + 1, PARTY_CELL_W - 2, PARTY_ROW_H - 2, 9, UI_BAR_WARN);
   const uint8_t *th = thumbs.get(dex);
-  if (th) drawThumb(th, x - 6, y + (PARTY_ROW_H - 32) / 2 - 3, 1, false);
+  if (th) drawThumb(th, x - 6, y - 3, 1, false);
   const DexEntry &d = DEX_TBL[dex];
   const char *nm = nick[0] ? nick : d.name;
   gfx->setTextColor(d.accent);
   gfx->setTextSize(1);
-  gfx->setCursor(x + 62, y + 9);
+  gfx->setCursor(x + 62, y + 18);
   gfx->print(nm);
   if (shiny) {
     gfx->setTextColor(UI_BAR_WARN);
-    gfx->setCursor(x + 62 + (int)strlen(nm) * 6 + 3, y + 9);
+    gfx->setCursor(x + 62 + (int)strlen(nm) * 6 + 3, y + 18);
     gfx->print("*");
   }
   char lv[12];
   snprintf(lv, sizeof(lv), T(S_LVL_FMT), (unsigned)level);
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(2);
-  gfx->setCursor(x + 62, y + 25);
+  gfx->setCursor(x + 62, y + 36);
   gfx->print(lv);
 }
 
@@ -5911,7 +5916,7 @@ void renderParty() {
   gfx->fillCircle(CX, CY, 231, UI_BG_DAY);
 
   char head[24];
-  snprintf(head, sizeof(head), T(S_PARTY_FMT), party.count());
+  snprintf(head, sizeof(head), T(S_PARTY_FMT), partyTotal());
   gfx->setTextColor(UI_INK);
   gfx->setTextSize(3);
   gfx->setCursor(CX - (int)strlen(head) * 9, 42);

@@ -271,7 +271,7 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 
 ### Your party
 - A **farewell** or a **release** doesn't end the relationship any more — the creature
-  **joins your party** (6 slots), keeping its species, nickname, shiny status, IVs,
+  **joins your party** (6 members in all: the live pet plus 5 banked; a full party sends the next one to the box), keeping its species, nickname, shiny status, IVs,
   training and the level it reached. Frozen there: it no longer ages or trains.
 - A **runaway does not join.** It's the one ending with a cost, and letting a
   neglected pet come back on the team would remove it. **Neither does an early
@@ -726,7 +726,7 @@ beach, forest, volcano, mountain, snow). Sleeping forces night.
 
 - `TamaPoke.ino` — init, game loop, render of every screen, gestures, serial console, audio
 - `pet.h` / `pet.cpp` — pet state and logic (stats, evolution, life cycle, streak/bond/medals, NVS)
-- `party.h` / `party.cpp` — the 6 retired pets kept from farewells and releases
+- `party.h` / `party.cpp` — the 5 banked pets (plus the live one = a party of 6) kept from farewells and releases
 - `sdmon.h` / `sdmon.cpp` — TPK1 (animated) and TPK2 (PMD) sprites + thumbnails, and file reception over USB (PUT/LS)
 - `rtcbat.h` / `rtcbat.cpp` — PCF85063 RTC + AXP2101 PMU (battery, brightness, PWR button)
 - `audio.h` / `audio.cpp` — ES8311 + I2S + Game-Boy-style tone synth (non-blocking task)
