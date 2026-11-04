@@ -2,6 +2,7 @@
 #include "moves.h"
 #include "dex.h"
 #include "pet.h"
+#include "party.h"
 #include <string.h>
 
 // Packets are [type][len][payload]. Small and fixed so a truncated or
@@ -11,7 +12,8 @@
 // Hello body. Laid out once, here, because every field in it is something the
 // two sides must agree on before a single turn is resolved.
 #define HB_PROTO 0
-#define HB_FLAGS 1        // bit0: I am offering to host
+#define HB_FLAGS 1        // bit0: I am offering to host, bit1: this is a TRADE,
+                          // bit2: I already consider us paired
 #define HB_COUNT 2        // how many creatures my squad has
 #define HB_ID 3           // 2 bytes, breaks a two-host tie
 #define HB_BUILD 5        // 2 bytes, table compatibility
@@ -27,6 +29,7 @@ uint16_t linkBuildTag() {
     (uint16_t)MOVE_COUNT, (uint16_t)DEX_COUNT, (uint16_t)MOVE_SLOTS,
     (uint16_t)TRAINER_TEAM_MAX, (uint16_t)sizeof(LinkMon),
     (uint16_t)sizeof(LinkResult), (uint16_t)SI_COUNT,
+    (uint16_t)TRADE_MON_BYTES, (uint16_t)BOX_SLOTS,
   };
   for (uint16_t b : bits) { h ^= b; h *= 16777619u; }
   return (uint16_t)(h ^ (h >> 16));
@@ -92,7 +95,8 @@ static void sendHello(Link &l) {
   uint8_t b[HB_LEN];
   memset(b, 0, sizeof(b));
   b[HB_PROTO] = LINK_PROTO;
-  b[HB_FLAGS] = l.isHost ? 1 : 0;
+  b[HB_FLAGS] = (l.isHost ? 1 : 0) | (l.tradeMode ? 2 : 0) |
+                (l.state == LINK_READY ? 4 : 0);
   b[HB_COUNT] = l.mineN;
   b[HB_ID] = (uint8_t)(l.id & 0xFF);
   b[HB_ID + 1] = (uint8_t)(l.id >> 8);
@@ -143,7 +147,164 @@ void Link::begin(bool host, const char *myName) {
   sawRx = false;
   armed = false;
   peerName[0] = 0;
+  tradeMode = false;
+  tMine = TradeSide();
+  tTheirs = TradeSide();
   (void)myName;
+}
+
+void Link::beginTrade(const char *myName) {
+  begin(true, myName);
+  tradeMode = true;
+}
+
+// Our whole trade state as one packet, kept live: tick() repeats it until it
+// changes, which is both the reliability and the keepalive (a pair of people
+// idly browsing would otherwise hit the 12 s silence timeout).
+static void tradeSend(Link &l) {
+  uint8_t b[4 + TRADE_MON_BYTES];
+  b[0] = l.tMine.ver;
+  b[1] = l.tMine.phase;
+  b[2] = l.tMine.oid;
+  b[3] = l.tMine.seen;
+  memcpy(b + 4, l.tMine.mon, TRADE_MON_BYTES);
+  put(l, LM_TRADE, b, (uint8_t)sizeof(b), true);
+}
+
+// Their offer changed or vanished under an ACCEPT of ours: the accept named an
+// offer that no longer exists, so it is withdrawn. Never trade what was not
+// agreed to.
+static void tradeReconcile(Link &l) {
+  if (l.tMine.phase == TP_ACCEPT && l.tTheirs.known &&
+      (l.tTheirs.phase == TP_BROWSE || l.tTheirs.oid != l.tMine.seen)) {
+    l.tMine.phase = TP_OFFER;
+    l.tMine.ver++;
+    tradeSend(l);
+  }
+}
+
+bool Link::tradeOffer(const uint8_t *mon) {
+  if (!tradeMode || state != LINK_READY || tMine.phase >= TP_ACCEPT) return false;
+  memcpy(tMine.mon, mon, TRADE_MON_BYTES);
+  tMine.phase = TP_OFFER;
+  tMine.seen = 0;
+  tMine.oid++;
+  tMine.ver++;
+  tradeSend(*this);
+  return true;
+}
+
+bool Link::tradeAccept() {
+  if (!tradeMode || state != LINK_READY || tMine.phase != TP_OFFER) return false;
+  if (!tTheirs.known || tTheirs.phase < TP_OFFER || tTheirs.phase > TP_ACCEPT)
+    return false;
+  tMine.seen = tTheirs.oid;
+  tMine.phase = TP_ACCEPT;
+  tMine.ver++;
+  tradeSend(*this);
+  return true;
+}
+
+bool Link::tradeCancel() {
+  if (!tradeMode || state != LINK_READY || tMine.phase >= TP_STORED) return false;
+  // Once both accepted, the app is about to store. Backing out in that gap is
+  // exactly the window that makes the other side hold a duplicate, so it is
+  // closed here rather than left to the UI.
+  if (tradeWantsStore()) return false;
+  memset(tMine.mon, 0, TRADE_MON_BYTES);
+  tMine.phase = TP_BROWSE;
+  tMine.seen = 0;
+  tMine.oid++;
+  tMine.ver++;
+  tradeSend(*this);
+  return true;
+}
+
+bool Link::tradeWantsStore() const {
+  return tradeMode && state == LINK_READY && tMine.phase == TP_ACCEPT &&
+         tTheirs.known && tTheirs.phase >= TP_ACCEPT &&
+         tTheirs.seen == tMine.oid && tMine.seen == tTheirs.oid;
+}
+
+void Link::tradeStored() {
+  if (!tradeWantsStore()) return;
+  tMine.phase = TP_STORED;
+  tMine.ver++;
+  tradeSend(*this);
+}
+
+bool Link::tradeWantsRelease() const {
+  return tradeMode && tMine.phase == TP_STORED && tTheirs.known &&
+         tTheirs.phase >= TP_STORED && tTheirs.seen == tMine.oid &&
+         tMine.seen == tTheirs.oid;
+}
+
+void Link::tradeFinished() {
+  if (!tradeWantsRelease()) return;
+  tMine.phase = TP_DONE;
+  tMine.ver++;
+  tradeSend(*this);
+}
+
+bool Link::tradeAborted() const {
+  return tradeMode && tMine.phase == TP_STORED && tTheirs.known &&
+         (tTheirs.phase < TP_ACCEPT || tTheirs.seen != tMine.oid ||
+          tMine.seen != tTheirs.oid);
+}
+
+void Link::tradeReset() {
+  if (!tradeMode || state != LINK_READY) return;
+  memset(tMine.mon, 0, TRADE_MON_BYTES);
+  tMine.phase = TP_BROWSE;
+  tMine.seen = 0;
+  tMine.oid++;
+  tMine.ver++;
+  tradeSend(*this);
+}
+
+// Fixed byte layout, little-endian, written by hand.
+void tradePack(uint8_t *o, const PartyMon &m) {
+  memset(o, 0, TRADE_MON_BYTES);
+  o[0] = (uint8_t)(m.dex & 0xFF);   o[1] = (uint8_t)((uint16_t)m.dex >> 8);
+  o[2] = (uint8_t)(m.level & 0xFF); o[3] = (uint8_t)(m.level >> 8);
+  o[4] = (uint8_t)(m.medals & 0xFF); o[5] = (uint8_t)(m.medals >> 8);
+  o[6] = m.ivAtk; o[7] = m.ivDef; o[8] = m.ivSpe; o[9] = m.ivHp;
+  o[10] = m.trAtk; o[11] = m.trDef; o[12] = m.trSpe;
+  o[13] = m.shiny ? 1 : 0;
+  memcpy(o + 14, m.nick, 12);
+  for (int i = 0; i < MOVE_SLOTS; i++) o[26 + i] = m.moves[i];
+}
+
+// Same formula as Pet::trMaxFor: a creature cannot be trained past what its IV
+// allows, so a packet claiming more is lying (or from a broken build).
+static uint8_t tradeTrCap(uint8_t iv) { return (uint8_t)(70 + (30 * (uint16_t)iv) / 31); }
+
+bool tradeUnpack(PartyMon &out, const uint8_t *in) {
+  out = PartyMon();
+  int16_t dex = (int16_t)((uint16_t)in[0] | ((uint16_t)in[1] << 8));
+  if (dex < 1 || dex > DEX_COUNT) return false;
+  out.dex = dex;
+  uint16_t lv = (uint16_t)in[2] | ((uint16_t)in[3] << 8);
+  out.level = lv < 1 ? 1 : (lv > MAX_LEVEL ? MAX_LEVEL : lv);
+  out.medals = (uint16_t)in[4] | ((uint16_t)in[5] << 8);
+  out.ivAtk = in[6] > 31 ? 31 : in[6];
+  out.ivDef = in[7] > 31 ? 31 : in[7];
+  out.ivSpe = in[8] > 31 ? 31 : in[8];
+  out.ivHp  = in[9] > 31 ? 31 : in[9];
+  out.trAtk = in[10] > tradeTrCap(out.ivAtk) ? tradeTrCap(out.ivAtk) : in[10];
+  out.trDef = in[11] > tradeTrCap(out.ivDef) ? tradeTrCap(out.ivDef) : in[11];
+  out.trSpe = in[12] > tradeTrCap(out.ivSpe) ? tradeTrCap(out.ivSpe) : in[12];
+  out.shiny = in[13] ? 1 : 0;
+  // The bitmap font only has printable ASCII; anything else would draw garbage.
+  uint8_t n = 0;
+  for (int i = 0; i < 11; i++) {
+    uint8_t c = in[14 + i];
+    if (!c) break;
+    out.nick[n++] = (c >= 0x20 && c < 0x7F) ? (char)c : '?';
+  }
+  out.nick[n] = 0;
+  for (int i = 0; i < MOVE_SLOTS; i++) out.moves[i] = linkSafeMove(in[26 + i]);
+  return true;
 }
 
 void Link::addMon(const LinkMon &m) {
@@ -252,6 +413,10 @@ void Link::onPacket(const uint8_t *buf, uint8_t len) {
   const uint8_t *body = buf + HDR;
   if (state == LINK_REFUSED) return;   // an incompatible peer stays refused
   sawRx = true;    // proof of life. onPacket has no clock, so tick() stamps it
+  // A trade only speaks hello, its own state packet and goodbye. Anything else
+  // is a battle frame from a peer in the wrong mode -- hello refuses that, and
+  // until it has, battle frames must not touch trade state.
+  if (tradeMode && type != LM_HELLO && type != LM_TRADE && type != LM_BYE) return;
 
   switch (type) {
     case LM_HELLO: {
@@ -264,6 +429,9 @@ void Link::onPacket(const uint8_t *buf, uint8_t len) {
       // Same proto, different tables: the move index in a result would name a
       // different move on each screen. Also refused.
       if (buildTheirs != linkBuildTag()) { state = LINK_REFUSED; return; }
+      // A fight and a trade cannot meet: one side would wait for a squad that
+      // never comes while the other waits for an offer. Refused, loudly.
+      if (((body[HB_FLAGS] & 2) != 0) != tradeMode) { state = LINK_REFUSED; return; }
       peerId = (uint16_t)body[HB_ID] | ((uint16_t)body[HB_ID + 1] << 8);
       bool theyHost = (body[HB_FLAGS] & 1) != 0;
       theirsExpected = body[HB_COUNT] > TRAINER_TEAM_MAX ? TRAINER_TEAM_MAX
@@ -278,6 +446,25 @@ void Link::onPacket(const uint8_t *buf, uint8_t len) {
       if (isHost == theyHost) {
         if (peerId == id) { state = LINK_REFUSED; return; }
         isHost = (id > peerId);
+      }
+
+      if (tradeMode) {
+        if (peerId == id) { state = LINK_REFUSED; return; }
+        // There is no squad to negotiate, so one hello each way is the whole
+        // pairing. Whoever spoke second answers; a side that already considers
+        // us paired answers again only if THEY have not yet said they do, which
+        // is what keeps two ready sides from volleying hellos forever.
+        bool theyPaired = (body[HB_FLAGS] & 4) != 0;
+        if (state == LINK_LISTENING || state == LINK_HANDSHAKE ||
+            state == LINK_SQUADS) {
+          bool answer = (state == LINK_LISTENING);
+          state = LINK_READY;                     // before sending, see start()
+          if (answer) sendHello(*this);
+          tradeSend(*this);                       // goes live: keepalive + state
+        } else if (!theyPaired) {
+          sendHello(*this);
+        }
+        return;
       }
 
       // Already met -- but they are still saying hello, which means they are
@@ -296,6 +483,7 @@ void Link::onPacket(const uint8_t *buf, uint8_t len) {
       return;
     }
     case LM_SQUAD: {
+      if (tradeMode) return;
       if (n < 1 + sizeof(LinkMon)) return;
       uint8_t idx = body[0];
       if (idx >= TRAINER_TEAM_MAX) return;
@@ -336,6 +524,24 @@ void Link::onPacket(const uint8_t *buf, uint8_t len) {
       turn = (uint8_t)(t + 1);
       txLive = false;                  // our action got through
       state = LINK_READY;              // and we may choose again
+      return;
+    }
+    case LM_TRADE: {
+      if (!tradeMode || n < 4 + TRADE_MON_BYTES) return;
+      if (state != LINK_READY) return;       // not paired yet: they will resend
+      uint8_t v = body[0];
+      if (body[1] > TP_DONE) return;         // not a phase we know
+      // Newest wins, a repeat changes nothing and an older frame is dropped:
+      // the resends that make this reliable must never move anyone backwards.
+      if (tTheirs.known && (v == tTheirs.ver || (uint8_t)(v - tTheirs.ver) >= 128))
+        return;
+      tTheirs.known = true;
+      tTheirs.ver = v;
+      tTheirs.phase = body[1];
+      tTheirs.oid = body[2];
+      tTheirs.seen = body[3];
+      memcpy(tTheirs.mon, body + 4, TRADE_MON_BYTES);
+      tradeReconcile(*this);
       return;
     }
     case LM_END:

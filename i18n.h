@@ -139,6 +139,10 @@ enum StrId : uint8_t {
   S_CATCH_OK_FMT,   // caught!
   S_CATCH_FAIL,     // it got away
   S_WILD_HUNT,      // menu row: start a wild encounter on demand
+  // LAN trading (banked and boxed creatures only -- never the live pet)
+  S_TRADE, S_TRADE_PICK, S_TRADE_ACCEPT, S_TRADE_CANCEL, S_TRADE_WAITING,
+  S_TRADE_CHOOSING, S_TRADE_NOROOM, S_TRADE_BUSY, S_TRADE_DONE, S_TRADE_KEPT,
+  S_TRADE_GIVE, S_TRADE_GET, S_TRADE_NONE, S_TRADE_BACKED,
   STR_COUNT
 };
 

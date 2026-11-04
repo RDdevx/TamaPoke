@@ -30,7 +30,11 @@ static const uint8_t BROADCAST[6] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 // that reads it, and calling back into the protocol would mean sending from
 // inside the receive callback, which is exactly what ESP-IDF asks you not to do.
 #define RING_SLOTS 8
-#define RING_SLOT_BYTES (sizeof(LinkMon) + 16)
+// Big enough for the largest frame in either mode: a squad packet, or a trade
+// state packet (header + 4 + the creature). Sized from both so growing one can
+// not silently truncate the other.
+#define TRADE_PKT_BYTES (2 + 4 + TRADE_MON_BYTES)
+#define RING_SLOT_BYTES ((sizeof(LinkMon) > TRADE_PKT_BYTES ? sizeof(LinkMon) : TRADE_PKT_BYTES) + 16)
 struct RingSlot { uint8_t len; uint8_t buf[RING_SLOT_BYTES]; };
 static RingSlot gRing[RING_SLOTS];
 static volatile uint8_t gHead = 0, gTail = 0;   // producer: ISR-ish; consumer: loop

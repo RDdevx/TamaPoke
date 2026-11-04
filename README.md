@@ -3,7 +3,7 @@
 [![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://dylanpdao.github.io/TamaPoke/web/)
 [![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
 ![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.11-8A2BE2)
+![Firmware](https://img.shields.io/badge/firmware-v3.17-8A2BE2)
 ![Code](https://img.shields.io/badge/code-MIT-blue)
 ![Languages](https://img.shields.io/badge/languages-6-FFCB05)
 [![Stars](https://img.shields.io/github/stars/DylanPDao/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/DylanPDao/TamaPoke/stargazers)
@@ -272,7 +272,7 @@ brings ELECTIVIRE, MAGMORTAR and RHYPERIOR waiting on exactly the same thing.
 ### Your party
 - A **farewell** or a **release** doesn't end the relationship any more — the creature
   **joins your party** (6 members in all: the live pet plus 5 banked; a full party sends the next one to the box), keeping its species, nickname, shiny status, IVs,
-  training and the level it reached. Frozen there: it no longer ages or trains.
+  training and the level it reached. Banked there, it no longer ages or trains. **Bringing one back** as your live pet (only while an egg is waiting) makes it an ordinary pet again: it ages, levels, evolves and learns moves, and can be farewelled, retired or run away like any other.
 - A **runaway does not join.** It's the one ending with a cost, and letting a
   neglected pet come back on the team would remove it. **Neither does an early
   retire** — see "Retiring a creature early" below.
@@ -366,6 +366,34 @@ quietly leaning on TMs to fill the gap.
 
 **Gym wins train too**, which is what makes the ladder worth replaying rather than
 a checklist you tick once:
+
+### Trading over LAN
+
+LAN screen -> **TRADE** on both devices (the same screen as LAN battles; the
+two sides pair automatically, no host/join choice). Both devices must run the
+same build -- a trade and a battle can't pair, and a protocol mismatch is
+refused up front.
+
+| Rule | Detail |
+|---|---|
+| What can be traded | Only **banked party members and boxed creatures**. The live pet is never listed, so it can't be offered. |
+| Flow | Each side picks one to give, sees the other's offer, and taps **ACCEPT**. Changing or cancelling an offer withdraws any accept made on the old one. |
+| Room needed | Each side needs one free party or box slot to receive into. |
+| Pokedex | A creature received by trade counts as owned, like a wild catch. |
+| What you receive | The creature exactly as it was: level, IVs, training, moves, nickname, shiny. Values off the air are validated and clamped (IVs <= 31, training <= the IV ceiling, real moves only, printable nickname). |
+
+**Connection loss never costs you a creature.** A creature is deleted only
+after the other device has confirmed it saved its copy. If the link dies at any
+point, the worst case is a **duplicate** -- both sides keep both creatures --
+never a loss. (No protocol can make a two-device swap perfectly atomic, so the
+failure mode was chosen deliberately: a duplicate costs nobody a creature.) The
+flip side is that pulling the plug at exactly the wrong moment can duplicate a
+creature on purpose; this is meant for friends. Once your copy is saved, BACK
+waits until the trade finishes or the link is gone.
+
+`tests/run_trade_test.sh` (needs only g++) drives two links over a transport
+that drops a third of all frames and cuts the link at every possible moment,
+asserting that no creature is ever lost.
 
 ### Retiring a creature early
 

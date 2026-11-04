@@ -168,7 +168,10 @@ void Pet::tick() {
                             // tiempo corriera aqui, el huevo eclosionaria solo a
                             // los 3 min con la especie sorteada y se perderia la
                             // eleccion del jugador
-  if (!frozen) ageMinutes++;   // a revived companion does not age
+  // A revived creature is a normal pet from here on: it ages, levels, evolves
+  // and learns moves. (It used to be a frozen "companion"; that gated live aging
+  // while the offline catch-up in syncClock() aged it anyway.)
+  ageMinutes++;
 
   if (isEgg()) {
     if (ageMinutes >= 3) hatch();  // si no lo tocas, eclosiona solo a los 3 min
@@ -248,7 +251,9 @@ void Pet::tick() {
 // newEgg() is about to wipe every field. Only the two endings the player CHOSE
 // qualify: a runaway ran off after an hour of total neglect, and letting it
 // come back on the team would remove the cost from the one ending that has any.
-// Brings a banked creature back as the live pet, frozen.
+// Brings a banked creature back as the live pet. It is an ordinary pet from
+// here: ages, levels, evolves, learns moves, and can be farewelled, retired or
+// run away like any other.
 void Pet::reviveFrom(const PartyMon &m) {
   if (m.empty()) return;
   ceremony = CER_NONE;
@@ -276,7 +281,7 @@ void Pet::reviveFrom(const PartyMon &m) {
   fullness = joy = energy = 80;
   hygiene = 100;
   poops = 0;
-  frozen = true;
+  evoDeclinedLv = 0;   // a "keep this form" from the previous creature must not mute this one
   strncpy(nick, m.nick, sizeof(nick) - 1);
   nick[sizeof(nick) - 1] = 0;
   registerSpecies(speciesId);
@@ -934,7 +939,6 @@ uint16_t Pet::knownCount() const {
 // forma final que ya cumplio su ciclo (7 dias): lista para despedirse. La
 // despedida la dispara el usuario con el boton (no salta sola, para que la vea)
 bool Pet::canFarewellNow() const {
-  if (frozen) return false;     // a companion cannot be lost; that is the point
   return !isEgg() && !sleeping && ceremony == CER_NONE &&
          DEX_TBL[speciesId].evolvesTo == 0 && ageMinutes >= FAREWELL_AGE_MIN;
 }
@@ -942,7 +946,6 @@ bool Pet::canFarewellNow() const {
 // abandono total durante 1h: lista para escaparse. La dispara el usuario con el
 // boton (final triste); cuidarla un solo tick la salva (neglectTicks se resetea)
 bool Pet::canRunawayNow() const {
-  if (frozen) return false;
   // inTotalNeglect() as well as the counter, and NOT just the counter. The
   // sleeping branch of tick() returns before the neglect block, so neglectTicks
   // is frozen rather than cleared for the whole night: a creature that went to
@@ -955,7 +958,6 @@ bool Pet::canRunawayNow() const {
 }
 
 bool Pet::canRetireNow() const {
-  if (frozen) return false;     // a companion is never given up
   return !isEgg() && !sleeping && ceremony == CER_NONE && !starterPick;
 }
 
@@ -1041,7 +1043,6 @@ void Pet::hatch() {
 // (ninguna estadistica por debajo de 40). NO evoluciona sola: la dispara el
 // usuario tocando al bicho (evolve()), para que vea la transformacion.
 bool Pet::canEvolveNow() const {
-  if (frozen) return false;     // frozen at the form it was banked in
   if (isEgg() || sleeping || ceremony != CER_NONE) return false;
   const DexEntry &d = DEX_TBL[speciesId];
   if (d.evolvesTo == 0) return false;
@@ -1353,7 +1354,7 @@ void Pet::save() {
   prefs.putBytes("badhX", badgesHardX, sizeof(badgesHardX));
   prefs.putBytes("eggR", eggByRegion, sizeof(eggByRegion));
   prefs.putString("tnam", trainerName);
-  prefs.putBool("froz", frozen);
+  prefs.putBool("froz", false);   // legacy key, kept so the save table and old backups stay valid
   prefs.putUShort("badg", badges);
   prefs.putUShort("badh", badgesHard);
   prefs.putBool("bk", berryKnown);
@@ -1460,7 +1461,10 @@ void Pet::load() {
   for (int i = 0; i < MOVE_SLOTS; i++)
     if (moves[i] >= MOVE_COUNT) moves[i] = 0;   // never index MOVE_TBL with junk
   lastLearnLevel = prefs.getUChar("mvlv", 0);
-  frozen = prefs.getBool("froz", false);
+  // Legacy flag: saves from before v3.16 may hold true for a revived pet. It no
+  // means anything now, and honouring it would leave that pet stuck as it was.
+  (void)prefs.getBool("froz", false);
+  frozen = false;
   avatar = prefs.getUChar("avtr", 0);
   // Absent on a Kanto-only save, which leaves both arrays zeroed -- exactly
   // "no Johto or Hoenn badges yet".

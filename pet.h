@@ -215,11 +215,10 @@ public:
 
   // Player-wide, like the streak and the Pokedex: badges outlive the creature
   // that earned them, so newEgg() must never clear this.
-  // A creature brought back out of the party or box. It is FROZEN: it does not
-  // age, cannot evolve, and cannot be lost -- a companion rather than a
-  // contender. The cost is that its level never rises again, so it stops
-  // improving; ageMinutes is simply set to match its banked level, which keeps
-  // level() working untouched rather than needing a second source of truth.
+  // A creature brought back out of the party or box is an ORDINARY pet: it ages,
+  // levels, evolves and learns moves. `frozen` is a legacy flag from when revived
+  // pets were permanent companions; it is always false now and kept only so the
+  // old "froz" save key still has something to map to.
   bool frozen = false;
   void reviveFrom(const PartyMon &m);
 
@@ -515,6 +514,11 @@ private:
   // close loss, and the two rolls themselves (public: the battle layer asks
   // for the odds before it rolls)
 public:
+  // A creature that arrived by TRADE counts as owned, the same as a wild catch.
+  void markTraded(int16_t dex, bool shinyVariant) {
+    registerCaught(dex, shinyVariant);
+    save();
+  }
   bool isCaught(int16_t dex) const {
     return dex >= 1 && dex <= DEX_COUNT && (dexCaught[(dex - 1) >> 3] & (1 << ((dex - 1) & 7)));
   }

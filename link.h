@@ -32,7 +32,7 @@
 // whole handshake without a radio, and a deliberately lossy transport exercises
 // all of the above. Only the radio itself is unverifiable here.
 
-#define LINK_PROTO 2        // bump on ANY wire change; a mismatch is refused
+#define LINK_PROTO 3        // bump on ANY wire change; a mismatch is refused
 #define LINK_MAX_PAYLOAD 200
 #define LINK_NAME_LEN 12
 
@@ -80,6 +80,7 @@ enum LinkMsg : uint8_t {
   LM_END,
   LM_BYE,        // leaving on purpose, so the peer need not wait for a timeout
   LM_REMATCH,    // go again with the same squads
+  LM_TRADE,      // trade mode: our whole trade state, resent until superseded
 };
 
 // A creature on the wire. Deliberately not `Combatant` itself: that carries
@@ -108,6 +109,48 @@ struct LinkResult {
   uint8_t hostIdx, guestIdx;   // which squad member is out on each side
   uint8_t flags;               // bit0 crit, bit1 super, bit2 a faint happened
 };
+
+// ---------------------------------------------------------------------------
+// TRADING. Same radio, same pairing, a different conversation.
+//
+// THE RULE THAT MATTERS: a creature is only ever DELETED after the other side
+// has confirmed it stored its copy. Nothing can be lost by a dropped frame, a
+// dead battery or a walked-off partner -- the worst outcome is that BOTH sides
+// end up holding both creatures (a duplicate). That is the opposite trade-off
+// from the classic games, and it is deliberate: no network can make a swap of
+// two items atomic (the "two generals" problem), so one failure mode has to be
+// chosen, and a duplicate is the one that costs nobody a creature.
+//
+// Each side keeps ONE state packet live and resends it until it changes. It
+// carries absolute state, never an event, and a version counter so a late
+// duplicate can never move anybody backwards -- the same idea as the battle
+// turn number above.
+//
+//   BROWSE -> OFFER -> ACCEPT -> STORED -> DONE
+//
+//   OFFER   I have picked a creature to give (its bytes ride in the packet)
+//   ACCEPT  I have seen your offer and I take it (`seen` names which offer)
+//   STORED  I agreed with you on this exact pair AND I have written your
+//           creature to my own save. Only now is it safe for YOU to delete yours.
+//   DONE    I have seen that you stored mine, and I deleted mine.
+//
+// Offers carry an id so an ACCEPT can only ever be matched to the offer it was
+// given for: if you change your mind in flight, a stale ACCEPT names an old id
+// and is ignored rather than trading the wrong creature.
+// ---------------------------------------------------------------------------
+#define TRADE_MON_BYTES 30
+enum TradePhase : uint8_t { TP_BROWSE = 0, TP_OFFER, TP_ACCEPT, TP_STORED, TP_DONE };
+
+struct TradeSide {
+  uint8_t ver = 0;        // bumped by its owner on EVERY change; newer wins
+  bool known = false;     // (peer side only) at least one packet has arrived
+  uint8_t phase = TP_BROWSE;
+  uint8_t oid = 0;        // identifies the creature currently offered
+  uint8_t seen = 0;       // the peer's oid that this side accepted
+  uint8_t mon[TRADE_MON_BYTES] = { 0 };
+};
+
+struct PartyMon;          // party.h -- kept out of here so link.cpp stays pure protocol
 
 struct Link {
   uint8_t state = LINK_OFF;
@@ -142,6 +185,11 @@ struct Link {
   uint32_t txAt = 0;
   uint32_t lastRx = 0;
   uint8_t resendSeq = 0;       // varies the resend interval, see LINK_JITTER_MS
+
+  // trade mode (see the block above). `tMine` is what we say, `tTheirs` is the
+  // newest thing we have heard them say.
+  bool tradeMode = false;
+  TradeSide tMine, tTheirs;
   bool sawRx = false;          // onPacket has no clock; tick() stamps it
   bool armed = false;
 
@@ -150,6 +198,7 @@ struct Link {
   void *ctx = nullptr;
 
   void begin(bool host, const char *myName);
+  void beginTrade(const char *myName);   // pair for a trade instead of a fight
   void addMon(const LinkMon &m);
   void start();                       // announce: hello, then squad
   void onPacket(const uint8_t *buf, uint8_t len);
@@ -161,6 +210,32 @@ struct Link {
   void sendBye();                     // leaving deliberately
   void sendRematch();
   void rearm();                       // same squads, fresh fight
+
+  // --- trading ---
+  // Offer (or change the offer to) a creature, already packed by tradePack().
+  // Only before we have accepted: after that the offer is what we agreed to.
+  bool tradeOffer(const uint8_t *mon);
+  // Take their current offer. False if they have not offered anything.
+  bool tradeAccept();
+  // Back to browsing. Refused once we have STORED -- by then it is committed.
+  bool tradeCancel();
+  // We and they accepted the same pair: the app should now WRITE THEIR creature
+  // to its save and then call tradeStored().
+  bool tradeWantsStore() const;
+  void tradeStored();
+  // They have stored ours: the app may now delete ours, then call tradeFinished().
+  bool tradeWantsRelease() const;
+  void tradeFinished();
+  // Past the point where leaving would risk a duplicate.
+  // We stored theirs but they walked back from the deal before storing ours.
+  // We keep both (a duplicate, never a loss); tradeReset() returns us to
+  // browsing so the pair can carry on.
+  bool tradeAborted() const;
+  void tradeReset();
+  bool tradeCommitted() const { return tradeMode && tMine.phase >= TP_STORED; }
+  bool tradeSettled() const {
+    return tradeMode && tMine.phase == TP_DONE && tTheirs.phase == TP_DONE;
+  }
 
   bool ready() const { return state == LINK_READY; }
   bool live() const {
@@ -183,3 +258,12 @@ uint16_t linkBuildTag();
 void linkMonFrom(LinkMon &out, const Combatant &c);
 void linkMonTo(Combatant &out, const LinkMon &m);
 uint8_t linkSafeMove(uint8_t m);      // 0 unless it is a real move
+
+// A banked creature on the wire: a fixed, explicit byte layout rather than a
+// struct memcpy, so padding and a future member reorder cannot change what the
+// other device reads.
+void tradePack(uint8_t *out, const PartyMon &m);
+// Everything off the air is untrusted. Fills `out` with something that is safe
+// to index tables with and to print, whatever the bytes were. False if it
+// cannot be a real creature at all (dex out of range).
+bool tradeUnpack(PartyMon &out, const uint8_t *in);

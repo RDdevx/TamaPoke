@@ -13,6 +13,7 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `species.h` / `dex.h` | The full dex: 1025 slots / 1018 included species entries (899–905 are Hisui placeholders), 10 regions incl. Galar + Paldea — names, typings, evolution chains, base stats, rarity tiers, favourite berry |
 | `types.h` | Type-effectiveness helpers over the generated 18x18 chart in `dex.h` |
 | `party.cpp/.h` | The 5 banked pets (live pet + 5 = a party of 6) from farewell/release (not runaway); a 6th record in an old save moves to the box |
+| `link.cpp/.h` | Peer protocol (battle **and trade**). Trade = `LM_TRADE` state packets; a creature is deleted only after the peer confirms it stored its copy. `tests/run_trade_test.sh` |
 | `i18n.cpp/.h` | 6-language string table (ES/EN/FR/DE/IT/PT) |
 | `audio.cpp/.h` | ES8311 codec over I2S |
 | `rtcbat.cpp/.h` | PCF85063 RTC + AXP2101 battery/PMU/PWR button |
@@ -603,10 +604,16 @@ what sounds linear. This is part of what the soak test is for.
 - A farewell now falls through party -> box, and only a full party AND a full
   box makes the player choose who to replace. That is what the box is for.
 
-**B3. Bringing a banked creature back -- DONE, frozen.** `Pet::reviveFrom()`
-makes a banked creature the live pet as a permanent companion: it does not age,
-cannot evolve, and is never offered a farewell or able to run away. Its cost is
-that its level never rises again.
+**B3. Bringing a banked creature back -- DONE, and it is an ordinary pet.**
+`Pet::reviveFrom()` makes a banked creature the live pet again. From then on it
+ages, levels, evolves, learns moves, and can be farewelled, retired or run away
+like any other pet. (It was a frozen "companion" at first; that gated live aging
+while `syncClock()` aged it across power-offs anyway, so it only levelled while
+the device was off. `Pet::frozen` and the `froz` key survive as an always-false
+legacy flag so the save table and old backups stay valid; a save that holds
+`froz=true` is loaded as false.) `reviveFrom()` also clears `evoDeclinedLv`, or a
+"keep this form" answered for the previous creature would mute this one's
+evolution offer. `tests/companion_test.cpp` covers aging, evolving and learning.
 
 `ageMinutes` is simply set to match the banked level rather than adding a second
 source of truth, so `level()` needs no special case. Offered ONLY while an egg
