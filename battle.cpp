@@ -15,6 +15,14 @@ static void fill(Combatant &c, int16_t dex, uint8_t lvl, uint16_t hp,
   c.base[SI_SPA] = sa; c.base[SI_SPD] = sd; c.base[SI_SPE] = sp;
 }
 
+int8_t nextStanding(const Combatant *squad, uint8_t n, uint8_t cur) {
+  for (uint8_t k = 1; k < n; k++) {
+    uint8_t i = (uint8_t)((cur + k) % n);
+    if (!squad[i].fainted()) return (int8_t)i;
+  }
+  return -1;
+}
+
 void combatantFromPet(Combatant &c, const Pet &p) {
   fill(c, p.speciesId, p.level(), p.vitStat(), p.atkStat(), p.defStat(),
        p.spaStat(), p.spdStat(), p.speStat());

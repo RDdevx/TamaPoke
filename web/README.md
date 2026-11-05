@@ -18,11 +18,16 @@ same one as `tools/send_sd.py`).
 - `firmware/tamapoke.bin` — the same four merged into one image for flashing a
   **blank** board from the command line. Not in the manifest, because installing
   it over an existing game erases the pet.
-- `sprites-kanto.pak`, `sprites-johto.pak`, `sprites-hoenn.pak`,
-  `sprites-sinnoh.pak` — the sprites bundled (TPAK) **one file per region**, so
-  the page sends a region in one click. **Generated** by
-  `tools/pack_bundle.py`, which derives the region list from `dex_data.py`, and
-  **committed** — see *Hosting the sprites* below for why they have to be.
+- `sprites-<region>.pak` for **kanto, johto, hoenn, sinnoh, unova, kalos, alola,
+  galar and paldea** (nine files, ~300 MB in total; the largest is ~43 MB) — the
+  sprites bundled (TPAK) **one file per region**. The page sends every pack it
+  can find in one go. **Generated** by `tools/pack_bundle.py` (the Galar and
+  Paldea packs come from `tools/galar_paldea/`) and **committed** — see
+  *Hosting the sprites* below for why they have to be.
+- `start-installer.bat` + `serve_nocache.py` — Windows helper: starts a local
+  server on `http://localhost:8000` that sends no-cache headers (so Chrome/Edge
+  never show a stale page, manifest or firmware after a rebuild) and opens the
+  page. Keep both files next to `index.html`; it needs Python on the PATH.
 
 ## Regenerate
 
@@ -38,27 +43,35 @@ Web Serial and ESP Web Tools need a **secure context**: `https://` or
 `http://localhost`. To test:
 
 ```bash
-cd web && python3 -m http.server 8000
+cd web && python3 serve_nocache.py 8000
 # open http://localhost:8000 in Chrome/Edge
 ```
+
+`python3 -m http.server 8000` also works, but it sends no cache headers, so the
+browser may keep showing an old version after a rebuild. On Windows,
+double-click `start-installer.bat` instead.
 
 ## End-user flow
 
 1. **Install TamaPoke** → flashes the firmware (pick the USB port; tick "Erase
    device" for a fresh board).
-2. **Connect board** + a region button → downloads that region's `.pak` and copies it to
-   the microSD over USB (progress bar, ~8–10 min). Close the step-1 install tab
-   first: only one program can use the port at a time.
-3. Restart (PWR button) → choose your starter and play.
+2. **Load Sprites** → connects the board, then downloads **every available region
+   pack** and copies it to `/mons` on the microSD over USB. It is the slow part
+   (Kanto alone is ~40 MB, all nine regions ~300 MB), so leave the tab open;
+   re-running it is safe, files are simply written again. Close the step-1
+   install dialog first: only one program can use the port at a time. A pack
+   that can't be found is skipped and logged.
+3. Restart (PWR button) → choose a region and a starter, and play.
 
-A hidden "pick them manually" option lets advanced users send their own `.bin`.
+Advanced users can instead send a whole `Mon` folder, or individual `.bin` files,
+from their own computer.
 
 ## Hosting the sprites
 
 **The `.pak` files ARE committed, and that is deliberate.** They have to be
 served **same-origin** from GitHub Pages, because **GitHub release assets send
 no CORS headers at all** — a browser `fetch()` of one is blocked, however much
-nicer it would be to keep 140 MB out of the repo. Verified with an `Origin`
+nicer it would be to keep ~300 MB out of the repo. Verified with an `Origin`
 header: the asset returns `200` and no `access-control-allow-origin`, while
 Pages sends `access-control-allow-origin: *`.
 
@@ -81,10 +94,10 @@ people downloading a bundle by hand, and for local testing you can leave the
 `PAK_RELEASE` at the top of the script block in `index.html` points at the repo;
 change it if you fork.
 
-**Why one file per region and not one big one:** all four together come to about
-140 MB, and GitHub's hard per-file limit is 100 MB — a single bundle would be
-uncommittable. Splitting also means most people can take Kanto (~40 MB) and
-stop, and add a region later without re-sending what is already on the card.
+**Why one file per region and not one big one:** all nine together come to about
+300 MB, and GitHub's hard per-file limit is 100 MB — a single bundle would be
+uncommittable. Splitting also keeps each file small enough to download and
+retry, and lets a region be added later without rebuilding the others.
 A region whose `.pak` is not on the card shows as locked in the Pokedex chooser
 and is kept out of the egg pool, so a partial install is a supported state
 rather than a broken one.

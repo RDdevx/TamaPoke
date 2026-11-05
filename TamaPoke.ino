@@ -36,7 +36,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.18"
+#define FW_VERSION "3.19"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -3962,7 +3962,7 @@ void btlResolve(uint8_t yourMove) {
   // Someone went down. The replacement is NOT swapped in here -- that made the
   // change instant and read as a jump cut. Flag it, let the sprite drop out of
   // frame, and swap when the player dismisses the message.
-  if (btlFoe.fainted() && btlLink && btlFoeAt + 1 < btlFoeSquadN) {
+  if (btlFoe.fainted() && btlLink && nextStanding(btlFoeSquad, btlFoeSquadN, btlFoeAt) >= 0) {
     btlFaintUntil[1] = millis() + BTL_FAINT_MS;
     btlSwapWho = 1;
     return;
@@ -3972,7 +3972,7 @@ void btlResolve(uint8_t yourMove) {
     btlSwapWho = 1;
     return;
   }
-  if (btlYou.fainted() && btlSquadAt + 1 < btlSquadN) {
+  if (btlYou.fainted() && nextStanding(btlSquad, btlSquadN, btlSquadAt) >= 0) {
     btlFaintUntil[0] = millis() + BTL_FAINT_MS;
     btlSwapWho = 0;
     return;
@@ -4354,10 +4354,9 @@ static void btlDoSwap() {
   if (btlSwapWho == 1 && btlLink) {
     btlFoeSquad[btlFoeAt] = btlFoe;
     // the next one still standing, not simply the next index
-    uint8_t nxt = btlFoeAt;
-    while (++nxt < btlFoeSquadN && btlFoeSquad[nxt].fainted()) {}
-    if (nxt >= btlFoeSquadN) { btlSwapWho = -1; return; }
-    btlFoeAt = nxt;
+    int8_t nxt = nextStanding(btlFoeSquad, btlFoeSquadN, btlFoeAt);
+    if (nxt < 0) { btlSwapWho = -1; return; }
+    btlFoeAt = (uint8_t)nxt;
     btlFoe = btlFoeSquad[btlFoeAt];
     btlHpShown[1] = btlFoe.hp;
     btlSyncSprite(1, btlFoe);
@@ -4376,7 +4375,11 @@ static void btlDoSwap() {
     btlSay(T(S_BTL_SENDS), t.name, btlFoe.name);
   } else if (btlSwapWho == 0) {
     btlSquad[btlSquadAt] = btlYou;     // remember how battered it was
-    btlSquadAt++;
+    // Whoever is still standing -- never a creature that is already down, and
+    // never skipping a live one just because it sits earlier in the squad.
+    int8_t nxt = nextStanding(btlSquad, btlSquadN, btlSquadAt);
+    if (nxt < 0) { btlSwapWho = -1; return; }
+    btlSquadAt = (uint8_t)nxt;
     btlYou = btlSquad[btlSquadAt];
     btlHpShown[0] = btlYou.hp;
     btlSyncSprite(0, btlYou);

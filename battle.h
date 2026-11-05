@@ -32,6 +32,14 @@ struct Combatant {
   bool fainted() const { return hp == 0; }
 };
 
+// Who replaces a fainted squad member: the next one still standing, looking
+// forward from `cur` in the order the squad was picked and then wrapping round to
+// the start, never `cur` itself. -1 when nobody else is standing, which is the
+// ONLY thing that should end a fight. (Both sides used to take "the next index",
+// so a creature switched in out of order that then fainted ended the fight with
+// teammates still alive behind it, and the next index could be one already down.)
+int8_t nextStanding(const Combatant *squad, uint8_t n, uint8_t cur);
+
 void combatantFromPet(Combatant &c, const Pet &p);
 void combatantFromParty(Combatant &c, const PartyMon &m);
 

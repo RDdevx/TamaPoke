@@ -9,7 +9,7 @@ this repository is a fork that builds on them.
 
 Everything added in this fork — the move-based battle system, the gym ladders,
 the party and box, the peer-to-peer link, the save backup, the Game Boy synth
-and the expansion to 386 species — sits on top of that foundation and would not
+and the expansion to a 1025-slot Pokédex (Gen 1–9) — sits on top of that foundation and would not
 exist without it.
 
 
@@ -25,9 +25,9 @@ This project is not affiliated with or endorsed by any of those companies.
 | Resource | Source | Use in the project |
 |---|---|---|
 | **All sprites** (idle, walk, sleep, eat, hurt, attack…) | [PMD Sprite Collaboration (PMDCollab/SpriteCollab)](https://github.com/PMDCollab/SpriteCollab) | Mystery-Dungeon-style animated sprites used everywhere: main screen, stat card, minigame, and the Pokédex grid + detail view |
-| **Base stats and learnsets** | [PokéAPI](https://pokeapi.co) | Real stats and level-up moves for all 386 |
-| **Gym badges** (all three regions) | [SteGriff/pokemon-badges](https://github.com/SteGriff/pokemon-badges) | `badges.h`, via `tools/gen_badges.py` — Stephen Griffiths 2011, **CC BY 3.0**, traced from Bulbapedia |
-| **Gym leader teams** (Johto, Hoenn) | [pret/pokecrystal](https://github.com/pret/pokecrystal), [pret/pokeemerald](https://github.com/pret/pokeemerald) | Verified against the games' own trainer tables by `tools/verify_rosters.py` — no art is taken, only the team data |
+| **Base stats and learnsets** | [PokéAPI](https://pokeapi.co) | Real stats and level-up moves for every species in the Pokédex |
+| **Gym badges** (Kanto through Unova; Kalos is credited separately below) | [SteGriff/pokemon-badges](https://github.com/SteGriff/pokemon-badges) | `badges.h`, via `tools/gen_badges.py` — Stephen Griffiths 2011, **CC BY 3.0**, traced from Bulbapedia |
+| **Gym leader teams** (Johto, Hoenn, Sinnoh) | [pret/pokecrystal](https://github.com/pret/pokecrystal), [pret/pokeemerald](https://github.com/pret/pokeemerald), [pret/pokeplatinum](https://github.com/pret/pokeplatinum) | Verified against the games' own trainer tables by `tools/verify_rosters.py` — no art is taken, only the team data |
 
 The **SpriteCollab** sprites are the work of its community of artists under their
 own terms (Creative Commons Attribution-NonCommercial 4.0). Per-species/per-author
@@ -135,3 +135,8 @@ the column splitter used for the SVG sheets cannot cut it) and packs them at
 **If this project is ever published in a form that would trouble either artist,
 the honest fix is the one already recommended for the player avatars: ship
 `tools/gen_badges.py` and let each user fetch the art themselves.**
+
+### Alola, Galar and Paldea
+
+No openly licensed badge art was found for these three regions, so the game
+draws a plain type-coloured medal instead of borrowing another region's badges.

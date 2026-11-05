@@ -14,6 +14,8 @@ Personal, non-commercial fan project. Code MIT; sprites CC BY-NC (PMD SpriteColl
 | `types.h` | Type-effectiveness helpers over the generated 18x18 chart in `dex.h` |
 | `party.cpp/.h` | The 5 banked pets (live pet + 5 = a party of 6) from farewell/release (not runaway); a 6th record in an old save moves to the box |
 | `link.cpp/.h` | Peer protocol (battle **and trade**). Trade = `LM_TRADE` state packets; a creature is deleted only after the peer confirms it stored its copy. `tests/run_trade_test.sh` |
+| `battle.cpp/.h` | Turn resolution, headless. `nextStanding()` picks who replaces a fainted squad member (next live one, wrapping; -1 = fight over) and both sides use it -- "next index" ended fights with live creatures left. `tests/battle_order_test.cpp` |
+| `battle.cpp/.h` | Turn resolution, headless. `nextStanding()` picks who replaces a fainted squad member (next live one, wrapping; -1 = fight over) and both sides use it -- "next index" ended fights with live creatures left. `tests/battle_order_test.cpp` |
 | `i18n.cpp/.h` | 6-language string table (ES/EN/FR/DE/IT/PT) |
 | `audio.cpp/.h` | ES8311 codec over I2S |
 | `rtcbat.cpp/.h` | PCF85063 RTC + AXP2101 battery/PMU/PWR button |
