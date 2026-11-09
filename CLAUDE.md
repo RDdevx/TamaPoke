@@ -593,7 +593,7 @@ the volume curve. The amplitude scale in particular (`500 * vol`) is a guess at
 what sounds linear. This is part of what the soak test is for.
 
 **B. Storage and the box -- DONE.**
-- The box is 18 slots (3 pages of 6) under its OWN NVS key, not a bigger party
+- The box is 96 slots (16 pages of 6; it was 18) under its OWN NVS key, not a bigger party
   blob. That was deliberate: growing the party blob changes its stride, and the
   length-based migration in `begin()` cannot tell a stride change from a
   slot-count change, so an existing party would have been read back misaligned.
@@ -601,8 +601,18 @@ what sounds linear. This is part of what the soak test is for.
   checks a pre-box save keeps its whole party and comes up with an empty box.
 - `swapPartyBox()` is one call for deposit, withdraw and exchange, since any of
   the two slots may be empty. Reached by tapping a party slot then BOX.
-- Room to grow: 6 + 18 records is 720 B against a ~4000 B single-blob limit, so
-  the box could reach ~120 before it would need splitting.
+- Growing it (18 -> 96) needed three things beyond the constant, all in
+  `tests/box_migration_test.cpp`: (1) `Party::begin()` must LOAD an older, smaller
+  box -- before, a shorter blob matched no branch, the box came up empty and the
+  next deposit saved that emptiness over the real one; (2) `MAX_VAL` in
+  `save.cpp` caps what a backup will carry and was 768 (25 records), so a bigger
+  box was silently left out of EXPORT and rejected by IMPORT -- it is now tied to
+  the box by a `static_assert`; (3) the box and trade screens page by dots, which
+  shrink to fit and now jump to the page tapped.
+- The real ceiling is the 20 KB NVS partition shared with the whole save: the box
+  is one blob and a rewrite briefly holds the old copy AND the new one. 96 slots
+  (2880 B) peaks at a little over half the partition (estimated, not measured);
+  past ~150 move the box to a file rather than raising `BOX_SLOTS`.
 - A farewell now falls through party -> box, and only a full party AND a full
   box makes the player choose who to replace. That is what the box is for.
 
@@ -622,8 +632,8 @@ source of truth, so `level()` needs no special case. Offered ONLY while an egg
 is waiting -- otherwise it would silently destroy whatever creature is alive,
 and the button says why when it is greyed.
 
-Note for anyone reading the farewell timing: 3 days is when it is first OFFERED
-(level 73), not when the creature is finished -- 100 comes at 4d 3h, and
+Note for anyone reading the farewell timing: 2 days is when it is first OFFERED
+(level 49; it was 3 days / level 73 until `FAREWELL_AGE_MIN` was shortened), not when the creature is finished -- 100 comes at 4d 3h, and
 declining re-offers a day later.
 
 **B2. Multi-region, once the Gen 2/3 expansion is untabled.** These four hang
@@ -1166,7 +1176,7 @@ level, moves, IVs) and two AI tiers — easy picks naively, hard reads
 `typeEffPct()`, STAB, stat stages and available KOs.
 
 Level anchor for balancing the ladder: `MINUTES_PER_LEVEL 60` and farewell at
-3 days means a fully-raised pet retires at **level 73**. Pets banked earlier are
+2 days means a fully-raised pet is first offered its farewell at **level 49** (it was 73 at 3 days, which is what the ladder below was tuned against -- banked members are now weaker, so the late ladder deserves a balance pass). Pets banked earlier are
 weaker, so team strength reflects how long each one was raised.
 
 - **The player picks the battle team.** Pool = the live pet plus the 6 banked;

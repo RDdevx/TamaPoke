@@ -1,7 +1,9 @@
 #include "save.h"
 #include <Arduino.h>
 #include <Preferences.h>
+#include <stdlib.h>
 #include <string.h>
+#include "party.h"      // BOX_SLOTS / PartyMon: the box is the biggest value in the save
 
 // Every key the firmware persists. Adding one here is the whole job of adding
 // it to the backup; save_test fails if a key exists in NVS and not in this list.
@@ -38,7 +40,14 @@ const SaveField SAVE_FIELDS[] = {
 };
 const uint16_t SAVE_FIELD_COUNT = sizeof(SAVE_FIELDS) / sizeof(SAVE_FIELDS[0]);
 
-#define MAX_VAL 768        // the box is the largest, at 18 records
+// The biggest single value is the box. This used to be 768 (25 records) -- fine
+// for 18 slots, but a box over 25 would have been silently LEFT OUT of every
+// backup (readField returns -1 for an oversized value) and a backup that did
+// hold one would have been REJECTED on restore. So it is tied to the box size,
+// and a build that grows the box without growing this does not compile.
+#define MAX_VAL 3072
+static_assert(sizeof(PartyMon) * BOX_SLOTS <= MAX_VAL,
+              "the box no longer fits MAX_VAL: raise it (and SAVE_BUF_MAX in save.h), or backups drop the box");
 
 static uint16_t crc16(const uint8_t *p, size_t n) {
   uint16_t c = 0xFFFF;
@@ -111,8 +120,9 @@ static void writeField(Preferences &p, const SaveField &f,
 size_t saveExportSize() {
   size_t n = SAVE_HDR + 2;
   for (uint16_t i = 0; i < SAVE_FIELD_COUNT; i++)
-    n += 1 + strlen(SAVE_FIELDS[i].key) + 1 + 2 + MAX_VAL / 16;
-  return n + 1024;                   // the two big blobs
+    n += 1 + strlen(SAVE_FIELDS[i].key) + 1 + 2 + 16;   // header + a typical small value
+  // the big values: the box, the party, the three dex bitmaps, and slack
+  return n + MAX_VAL + 1536;
 }
 
 size_t saveExport(uint8_t *out, size_t cap) {
@@ -121,14 +131,17 @@ size_t saveExport(uint8_t *out, size_t cap) {
   p.begin("tamapoke", true);
   size_t at = SAVE_HDR;
   uint16_t count = 0;
-  uint8_t val[MAX_VAL];
+  // Heap, not stack: at MAX_VAL = 3 KB this would eat a large share of the
+  // loop task's stack for the whole export.
+  uint8_t *val = (uint8_t *)malloc(MAX_VAL);
+  if (!val) { p.end(); return 0; }
   for (uint16_t i = 0; i < SAVE_FIELD_COUNT; i++) {
     const SaveField &f = SAVE_FIELDS[i];
     int n = readField(p, f, val);
     if (n < 0) continue;             // absent: nothing to back up
     size_t klen = strlen(f.key);
     if (klen > 15) continue;         // NVS keys cannot be longer anyway
-    if (at + 1 + klen + 1 + 2 + (size_t)n + 2 > cap) { p.end(); return 0; }
+    if (at + 1 + klen + 1 + 2 + (size_t)n + 2 > cap) { free(val); p.end(); return 0; }
     out[at++] = (uint8_t)klen;
     memcpy(out + at, f.key, klen); at += klen;
     out[at++] = f.kind;
@@ -137,6 +150,7 @@ size_t saveExport(uint8_t *out, size_t cap) {
     memcpy(out + at, val, (size_t)n); at += (size_t)n;
     count++;
   }
+  free(val);
   p.end();
   out[0] = SAVE_MAGIC0; out[1] = SAVE_MAGIC1;
   out[2] = SAVE_MAGIC2; out[3] = SAVE_MAGIC3;

@@ -36,7 +36,7 @@
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
-#define FW_VERSION "3.19"
+#define FW_VERSION "3.20"
 
 Arduino_DataBus *bus = new Arduino_ESP32QSPI(
   LCD_CS, LCD_SCLK, LCD_SDIO0, LCD_SDIO1, LCD_SDIO2, LCD_SDIO3);
@@ -1107,9 +1107,10 @@ void handleSerial() {
     // Prints the whole save as a block of IMPORT commands. Pasting that block
     // back is the restore -- there is no separate format to get wrong, and no
     // single 2000-character line for a terminal to mangle.
-    static uint8_t buf[2048];
-    size_t n = saveExport(buf, sizeof(buf));
-    if (!n) { Serial.println("EXPORT FAIL"); return; }
+    uint8_t *buf = (uint8_t *)malloc(SAVE_BUF_MAX);   // heap: a 96-slot box makes this ~4 KB
+    if (!buf) { Serial.println("EXPORT FAIL"); return; }
+    size_t n = saveExport(buf, SAVE_BUF_MAX);
+    if (!n) { free(buf); Serial.println("EXPORT FAIL"); return; }
     Serial.printf("# TamaPoke save, %u bytes. Paste this whole block back.\n",
                   (unsigned)n);
     for (size_t i = 0; i < n; i += 48) {
@@ -1118,17 +1119,21 @@ void handleSerial() {
       Serial.println();
     }
     Serial.println("IMPORT");        // the empty one commits
+    free(buf);
   } else if (line.startsWith("IMPORT")) {
     // IMPORT <hex>   append a chunk
     // IMPORT         commit what has been appended
-    static uint8_t in[2048];
+    static uint8_t *in = nullptr;   // allocated on the first chunk, freed on every way out
     static size_t inN = 0;
+    auto drop = [&]() { free(in); in = nullptr; inN = 0; };
     String hex = line.substring(6);
     hex.trim();
     if (hex.length()) {
-      if (hex.length() & 1) { Serial.println("IMPORT ODD"); inN = 0; return; }
+      if (!in) in = (uint8_t *)malloc(SAVE_BUF_MAX);
+      if (!in) { Serial.println("IMPORT NOMEM"); inN = 0; return; }
+      if (hex.length() & 1) { Serial.println("IMPORT ODD"); drop(); return; }
       for (size_t i = 0; i + 1 < (size_t)hex.length(); i += 2) {
-        if (inN >= sizeof(in)) { Serial.println("IMPORT FULL"); inN = 0; return; }
+        if (inN >= SAVE_BUF_MAX) { Serial.println("IMPORT FULL"); drop(); return; }
         auto nyb = [](char c) -> int {
           if (c >= '0' && c <= '9') return c - '0';
           if (c >= 'A' && c <= 'F') return c - 'A' + 10;
@@ -1137,15 +1142,15 @@ void handleSerial() {
         };
         const char *hs = hex.c_str();
         int hi = nyb(hs[i]), lo = nyb(hs[i + 1]);
-        if (hi < 0 || lo < 0) { Serial.println("IMPORT BAD"); inN = 0; return; }
+        if (hi < 0 || lo < 0) { Serial.println("IMPORT BAD"); drop(); return; }
         in[inN++] = (uint8_t)((hi << 4) | lo);
       }
       return;                        // silent while collecting
     }
-    if (!inN) { Serial.println("IMPORT EMPTY"); return; }
+    if (!inN) { Serial.println("IMPORT EMPTY"); drop(); return; }
     bool ok = saveImport(in, inN);
     Serial.println(ok ? "IMPORT OK" : "IMPORT REJECTED");
-    inN = 0;
+    drop();
     if (ok) { Serial.println("DONE"); delay(100); ESP.restart(); }
   } else if (line == "WIPE") {
     pet.factoryReset();     // borra NVS y reinicia -> partida nueva (eleccion de inicial)
@@ -5232,6 +5237,31 @@ void lanTap(int16_t x, int16_t y) {
   if (y > 370) { lanLeave(); lanOpen = false; }   // back
 }
 
+// ---------- pager dots ----------
+// A row of page dots along y = 366, centred. With 16 box pages at the old fixed
+// 26 px spacing the row was 390 px wide and its ends fell off the round glass;
+// the spacing now shrinks so the whole row stays inside ~330 px. The same maths
+// answers "which dot did this tap land on", so the dots can jump pages -- with 16
+// pages, swiping one at a time is a long way to the back of the box.
+static int pagerStep(uint8_t pages, int maxStep) {
+  if (pages < 2) return maxStep;
+  int fit = 330 / (pages - 1);
+  return fit < maxStep ? fit : maxStep;
+}
+static int pagerDotX(uint8_t i, uint8_t pages, int maxStep) {
+  int step = pagerStep(pages, maxStep);
+  return CX - (pages - 1) * step / 2 + i * step;
+}
+static int pagerHit(int x, uint8_t pages, int maxStep) {   // -1 if not near any dot
+  int step = pagerStep(pages, maxStep);
+  int best = -1, bestD = step / 2 + 1;
+  for (uint8_t i = 0; i < pages; i++) {
+    int d = abs(x - pagerDotX(i, pages, maxStep));
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
 // ---------- LAN trade ----------
 // The protocol and its safety argument live in link.h. What this half owns is
 // the part only the app can do: writing a received creature to the save, and
@@ -5450,7 +5480,7 @@ static void renderTrade() {
       }
       uint8_t pages = tradeListN ? (tradeListN + TRADE_PER_PAGE - 1) / TRADE_PER_PAGE : 1;
       for (uint8_t i = 0; i < pages; i++) {
-        int dx = CX - (pages - 1) * 9 + i * 18;
+        int dx = pagerDotX(i, pages, 18);
         if (i == tradePage) gfx->fillCircle(dx, 366, 4, UI_INK);
         else gfx->drawCircle(dx, 366, 3, UI_INK);
       }
@@ -5517,6 +5547,12 @@ static void tradeTap(int16_t x, int16_t y) {
   if (lan.state != LINK_READY) return;
   const TradeSide &me = lan.tMine;
   if (me.phase == TP_BROWSE) {
+    if (y >= 352 && y <= 380) {     // the page dots: tap one to jump there
+      uint8_t pages = tradeListN ? (tradeListN + TRADE_PER_PAGE - 1) / TRADE_PER_PAGE : 1;
+      int pg = pagerHit(x, pages, 18);
+      if (pg >= 0) { tradePage = (uint8_t)pg; sfxPlay(SFX_TAP); }
+      return;
+    }
     for (uint8_t i = 0; i < TRADE_PER_PAGE; i++) {
       uint8_t idx = tradePage * TRADE_PER_PAGE + i;
       if (idx >= tradeListN) break;
@@ -6152,10 +6188,16 @@ void renderBox() {
   }
   uint8_t pages = BOX_SLOTS / BOX_PER_PAGE;
   for (uint8_t i = 0; i < pages; i++) {
-    int dx = CX - (pages - 1) * 13 + i * 26;
+    int dx = pagerDotX(i, pages, 26);
     if (i == boxPage) gfx->fillCircle(dx, 366, 5, UI_INK);
-    else gfx->drawCircle(dx, 366, 4, UI_INK);
+    else gfx->drawCircle(dx, 366, 3, UI_INK);
   }
+  char pg[12];
+  snprintf(pg, sizeof(pg), "%u/%u", (unsigned)boxPage + 1, (unsigned)pages);
+  gfx->setTextColor(UI_TRACK);
+  gfx->setTextSize(1);
+  gfx->setCursor(CX - (int)strlen(pg) * 3, 346);
+  gfx->print(pg);
   gfx->setTextColor(UI_TRACK);
   gfx->setTextSize(2);
   gfx->setCursor(CX - strlen(T(S_BACK)) * 6, 392);
@@ -6184,6 +6226,11 @@ void boxTap(int16_t x, int16_t y) {
     boxDetail = 0;                          // anywhere else backs out
     releaseConfirm = false;
     sfxPlay(SFX_TAP);
+    return;
+  }
+  if (y >= 352 && y <= 380) {       // the page dots: tap one to jump there
+    int pg = pagerHit(x, BOX_SLOTS / BOX_PER_PAGE, 26);
+    if (pg >= 0) { boxPage = (uint8_t)pg; sfxPlay(SFX_TAP); }
     return;
   }
   for (uint8_t i = 0; i < BOX_PER_PAGE; i++) {

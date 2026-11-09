@@ -713,7 +713,7 @@ bool Pet::knowsMove(uint8_t mv) const {
 // of them felt like anything. A single number is explainable in one sentence and
 // lands on a seam the game already has: the first five leaders sit at 14-43, so
 // you fight the early ladder on what your species actually learns, and TMs
-// arrive as you enter the back half. A creature retires at 73 and caps at 100.
+// arrive as you enter the back half. A creature is first offered its farewell at 49 and caps at 100.
 //
 // It only works because dex_moves.py now carries the cheap early attacks --
 // SCRATCH, PECK, POISON STING, BUBBLE and the rest. Without those, gating TMs
@@ -878,7 +878,7 @@ uint8_t Pet::pendingLearnables(uint8_t *out, uint8_t max) const {
 }
 
 // Tirada de un IV: 8-31. El suelo en 8 es deliberado — en los juegos un 0 es
-// posible porque puedes criar cientos de huevos, aqui cada crianza dura 3 dias
+// posible porque puedes criar cientos de huevos, aqui cada crianza dura 2 dias
 // y un individuo de desecho seria un castigo desproporcionado. La racha y el
 // vinculo del bicho ANTERIOR empujan la tirada: cuidar bien mejora la camada.
 uint8_t Pet::rollIV(int bonus) const {

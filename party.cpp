@@ -67,6 +67,14 @@ void Party::begin() {
   size_t boxStored = prefs.getBytesLength("box");
   if (boxStored == sizeof(box)) {
     prefs.getBytes("box", box, sizeof(box));
+  } else if (boxStored > 0 && boxStored < sizeof(box) && boxStored % sizeof(PartyMon) == 0) {
+    // An OLDER, smaller box (it was 18 slots, then the box grew). Without this
+    // branch neither case matched, the box loaded EMPTY, and the next deposit
+    // saved that emptiness over the real one -- every stored creature gone.
+    // The records are the same stride, so they simply land in the front slots
+    // and the new ones start empty. getBytes() is told the STORED length: it
+    // refuses a destination smaller than the blob, but a larger one is fine.
+    prefs.getBytes("box", box, boxStored);
   } else if (boxStored > sizeof(box) && boxStored % sizeof(PartyMon) == 0) {
     // Same as the party above: a later build with more box slots. Keep the
     // first BOX_SLOTS rather than dropping the whole box on the floor, which is

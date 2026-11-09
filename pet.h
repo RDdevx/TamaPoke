@@ -16,7 +16,7 @@
 #define HEART_MS 1500UL
 #define EVOLVE_ANIM_MS 5200UL              // animacion de evolucion (mas larga = mas epica)
 #define CEREMONY_MS 10000UL                // duracion de la despedida en pantalla
-#define FAREWELL_AGE_MIN (3UL * 24 * 60)   // se despide a los 3 dias de juego (en forma final)
+#define FAREWELL_AGE_MIN (2UL * 24 * 60)   // se ofrece la despedida a los 2 dias de juego (en forma final), nivel 49
 // Retiring a creature BEFORE it has earned its farewell costs the NEXT one a
 // day's worth of evolution. Derived from MINUTES_PER_LEVEL rather than written
 // as 24, so it stays "a day" if the level rate is ever retuned.
@@ -391,7 +391,7 @@ public:
   // is never clamped, so without it 1 + ageMinutes/60 overflows this uint8_t
   // past ~10.6 days -- and the RTC catches up to 2 weeks offline, which lands on
   // level 337 and wraps to 81. Reached at 4d 3h; farewell is merely *offered* at
-  // 3 days (level 73), so declining it to raise a stronger battler is a real
+  // 2 days (level 49), so declining it to raise a stronger battler is a real
   // choice rather than an accident.
   uint8_t level() const {
     uint32_t l = 1 + ageMinutes / MINUTES_PER_LEVEL;
