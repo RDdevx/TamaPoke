@@ -1,13 +1,6 @@
 # TamaPoke
 
-[![Flash in browser](https://img.shields.io/badge/flash-in%20browser-FF6B00?logo=googlechrome&logoColor=white)](https://dylanpdao.github.io/TamaPoke/web/)
-[![MakerWorld](https://img.shields.io/badge/MakerWorld-3D%20case-00AE42?logo=bambulab&logoColor=white)](https://makerworld.com/es/models/2937822-tamapoke-a-pokemon-pokeball-tamagotchi)
-![Board](https://img.shields.io/badge/board-ESP32--S3%20round%20AMOLED-E7352C?logo=espressif&logoColor=white)
-![Firmware](https://img.shields.io/badge/firmware-v3.18-8A2BE2)
-![Pokédex](https://img.shields.io/badge/Pok%C3%A9dex-1025-E7352C)
-![Code](https://img.shields.io/badge/code-MIT-blue)
-![Languages](https://img.shields.io/badge/languages-6-FFCB05)
-[![Stars](https://img.shields.io/github/stars/DylanPDao/TamaPoke?style=flat&logo=github&color=yellow)](https://github.com/DylanPDao/TamaPoke/stargazers)
+[👉 Click to visit the web installer!](https://rddevx.github.io/TamaPoke/)
 
 A Pokémon tamagotchi for the **Waveshare ESP32-S3-Touch-AMOLED-1.75** (round
 466×466 AMOLED, CO5300 over QSPI, CST9217 touch over I²C). Hatch an egg, raise
